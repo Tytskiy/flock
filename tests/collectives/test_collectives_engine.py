@@ -34,9 +34,13 @@ def test_collective_kind_mismatch():
         policy=Fifo(),
     )
 
-    _register(scheduler, 0, Barrier())
-    with pytest.raises(FlockCollectiveMismatch, match="all_reduce"):
-        _register(scheduler, 1, AllReduce(value=0, op="sum"))
+    try:
+        _register(scheduler, 0, Barrier())
+        with pytest.raises(FlockCollectiveMismatch, match="all_reduce"):
+            _register(scheduler, 1, AllReduce(value=0, op="sum"))
+    finally:
+        for worker in scheduler.workers:
+            worker.coro.close()
 
 
 def test_barrier_scheduler_low_level():

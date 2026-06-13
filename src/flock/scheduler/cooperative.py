@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from flock.collectives.engine import CollectiveEngine
-from flock.errors import FlockDeadlockError
+from flock.errors import FlockDeadlockError, FlockUsageError
 from flock.p2p.engine import P2PEngine
 from flock.scheduler.port import SchedulePort
 from flock.scheduler.protocol import Fifo, Policy, Random, Worker
@@ -60,11 +60,16 @@ class CooperativeScheduler[R]:
             self._tick()
 
         if len(self.done) != self.world_size:
-            raise FlockDeadlockError(self._deadlock_report())
+            blocking = self._blocking_report()
+            pending = self.runtime.pending.report_lines()
+            if pending:
+                lines = "\n".join(f"  - {line}" for line in pending)
+                raise FlockUsageError(f"unawaited operations:\n{lines}\n\n{blocking}")
+            raise FlockDeadlockError(blocking)
 
         return [self.done[rank] for rank in range(self.world_size)]
 
-    def _deadlock_report(self) -> str:
+    def _blocking_report(self) -> str:
         lines = ["deadlock: no rank can make progress."]
         lines.extend(self.runtime.p2p.deadlock_lines())
         lines.extend(self.runtime.collectives.deadlock_lines())
@@ -89,6 +94,7 @@ class CooperativeScheduler[R]:
         try:
             handle = self._resume(rank, resume_value)
         except StopIteration as stop:
+            self.runtime.pending.check(rank)
             self.done[rank] = stop.value
             return
 

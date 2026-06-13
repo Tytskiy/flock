@@ -7,18 +7,15 @@ from flock.wait import Request
 
 
 def barrier(group: Group | None = WORLD) -> Request:
-    handle = require_runtime().collectives.begin(group, Barrier())
-    return Request(handle)
+    return Request(require_runtime().begin_collective(group, Barrier()))
 
 
 def all_gather[T](value: T, group: Group | None = WORLD) -> Request:
-    handle = require_runtime().collectives.begin(group, AllGather(value=value))
-    return Request(handle)
+    return Request(require_runtime().begin_collective(group, AllGather(value=value)))
 
 
 def all_reduce[T](value: T, op: ReduceOp, group: Group | None = WORLD) -> Request:
-    handle = require_runtime().collectives.begin(group, AllReduce(value=value, op=op))
-    return Request(handle)
+    return Request(require_runtime().begin_collective(group, AllReduce(value=value, op=op)))
 
 
 def scatter[T](
@@ -26,5 +23,4 @@ def scatter[T](
     root: Rank = 0,
     group: Group | None = WORLD,
 ) -> Request:
-    handle = require_runtime().collectives.begin(group, Scatter(values=values, root=root))
-    return Request(handle)
+    return Request(require_runtime().begin_collective(group, Scatter(values=values, root=root)))

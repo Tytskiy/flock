@@ -24,6 +24,7 @@ class CollectiveEngine:
         self.counters: defaultdict[tuple[Rank, Group], int] = defaultdict(int)
         self.slots: dict[tuple[Group, int], CollectiveSlot] = {}
         self.blocked: dict[Rank, CollectiveHandle] = {}
+        self._request_counter = 0
 
     def begin(self, group: Group | None, call: CollectiveCall) -> CollectiveHandle:
         rank = current_rank()
@@ -46,7 +47,15 @@ class CollectiveEngine:
         call.enter(slot.state, rank)
         slot.arrived.add(rank)
         self.counters[(rank, members)] += 1
-        return CollectiveHandle(group=members, index=index, rank=rank, kind=call.kind)
+        request_id = self._request_counter
+        self._request_counter += 1
+        return CollectiveHandle(
+            group=members,
+            index=index,
+            rank=rank,
+            kind=call.kind,
+            request_id=request_id,
+        )
 
     def wait(self, rank: Rank, handle: CollectiveHandle) -> None:
         key = (handle.group, handle.index)
@@ -87,8 +96,7 @@ class CollectiveEngine:
             missing = slot.members - slot.arrived
             if missing:
                 lines.append(
-                    f"collective #{index} ({slot.state.kind}) "
-                    f"is waiting for ranks {sorted(missing)} to enter"
+                    f"collective #{index} ({slot.state.kind}) is waiting for ranks {sorted(missing)} to enter"
                 )
 
             registered = slot.arrived - slot.waiting

@@ -9,3 +9,4 @@ class CollectiveHandle:
     index: int
     rank: Rank
     kind: str
+    request_id: int

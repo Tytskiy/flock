@@ -1,5 +1,3 @@
-import gc
-
 import pytest
 
 import flock
@@ -41,7 +39,7 @@ def test_recv_deadlock():
         run()
 
 
-def test_unawaited_op_warns():
+def test_unawaited_op_raises():
     @flock.distribute(workers=2)
     async def run():
         if flock.rank() == 0:
@@ -49,9 +47,20 @@ def test_unawaited_op_warns():
         await flock.barrier()
         return "done"
 
-    with pytest.warns(RuntimeWarning, match="never awaited"):
+    with pytest.raises(FlockUsageError, match="unawaited"):
         run()
-        gc.collect()
+
+
+def test_exits_with_unawaited_send_raises():
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        if flock.rank() == 0:
+            flock.send(1, "ping")
+            return None
+        return await flock.recv(0)
+
+    with pytest.raises(FlockUsageError, match="flock.send"):
+        run()
 
 
 def test_op_outside_distribute_raises():

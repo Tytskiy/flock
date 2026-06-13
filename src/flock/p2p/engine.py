@@ -5,6 +5,7 @@ from typing import Any
 from flock.context import rank as current_rank
 from flock.errors import FlockDeadlockError, FlockUsageError
 from flock.p2p.handle import P2PHandle
+from flock.p2p.ops import Isend, P2PCall, Recv, Send
 from flock.scheduler.port import SchedulePort
 from flock.types import Rank
 
@@ -30,35 +31,36 @@ class P2PEngine:
         self.mailboxes: defaultdict[Rank, deque[Message]] = defaultdict(deque)
         self.requests: dict[Rank, P2PRequest] = {}
         self.blocked: dict[Rank, P2PHandle] = {}
-        self._next_request_id = 0
+        self._request_counter = 0
 
-    def begin_isend(self, dst: Rank, value: Any) -> P2PHandle:
+    def begin(self, call: P2PCall) -> P2PHandle:
         rank = current_rank()
-        handle = self._new_handle("isend", rank, dst)
-        self._deliver(rank, dst, value, ack=False)
-        self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
-        return handle
+        handle = self._new_handle(call.kind, rank, call.peer)
 
-    def begin_send(self, dst: Rank, value: Any) -> P2PHandle:
-        rank = current_rank()
-        handle = self._new_handle("send", rank, dst)
+        match call:
+            case Isend(value=value):
+                self._deliver(rank, call.peer, value, ack=False)
+                self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
 
-        if self.suspended.get(dst) == rank:
-            del self.suspended[dst]
-            recv_handle = self.blocked.pop(dst)
-            self.requests.pop(recv_handle.request_id)
-            self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
-            self._port.resume(dst, value)
-        else:
-            self.requests[handle.request_id] = P2PRequest(handle=handle)
-            self.mailboxes[dst].append(Message(src=rank, value=value, ack=True, send_id=handle.request_id))
+            case Send(value=value):
+                if self.suspended.get(call.peer) == rank:
+                    del self.suspended[call.peer]
+                    recv_handle = self.blocked.pop(call.peer)
+                    self.requests.pop(recv_handle.request_id)
+                    self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
+                    self._port.resume(call.peer, value)
+                else:
+                    self.requests[handle.request_id] = P2PRequest(handle=handle)
+                    self.mailboxes[call.peer].append(
+                        Message(src=rank, value=value, ack=True, send_id=handle.request_id)
+                    )
 
-        return handle
+            case Recv():
+                self.requests[handle.request_id] = P2PRequest(handle=handle)
 
-    def begin_recv(self, src: Rank) -> P2PHandle:
-        rank = current_rank()
-        handle = self._new_handle("recv", rank, src)
-        self.requests[handle.request_id] = P2PRequest(handle=handle)
+            case _:
+                raise TypeError(f"unknown p2p call: {call!r}")
+
         return handle
 
     def wait(self, rank: Rank, handle: P2PHandle) -> None:
@@ -114,8 +116,8 @@ class P2PEngine:
         return lines
 
     def _new_handle(self, kind: str, rank: Rank, peer: Rank) -> P2PHandle:
-        request_id = self._next_request_id
-        self._next_request_id += 1
+        request_id = self._request_counter
+        self._request_counter += 1
         return P2PHandle(kind=kind, rank=rank, peer=peer, request_id=request_id)
 
     def _deliver(self, src: Rank, dst: Rank, value: Any, *, ack: bool, send_id: int | None = None) -> None:

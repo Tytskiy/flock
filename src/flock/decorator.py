@@ -51,7 +51,12 @@ def distribute[R](
                 )
                 for rank in range(workers)
             ]
-            return CooperativeScheduler(spawned, policy=Random(seed=seed)).run()
+            try:
+                return CooperativeScheduler(spawned, policy=Random(seed=seed)).run()
+            except BaseException:
+                for worker in spawned:
+                    worker.coro.close()
+                raise
 
         return wrapper
 

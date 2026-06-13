@@ -1,5 +1,3 @@
-import gc
-
 import pytest
 
 import flock
@@ -76,13 +74,12 @@ def test_barrier_non_member_raises():
         run()
 
 
-def test_unawaited_barrier_warns():
+def test_unawaited_barrier_raises():
     @flock.distribute(workers=2)
     async def run():
         flock.barrier()
         await flock.barrier()
         return flock.rank()
 
-    with pytest.warns(RuntimeWarning, match="never awaited"):
+    with pytest.raises(FlockUsageError, match="unawaited"):
         run()
-        gc.collect()
