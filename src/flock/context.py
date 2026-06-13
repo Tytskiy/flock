@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 import contextvars
 from dataclasses import dataclass
 
 from flock.errors import FlockUsageError
-
-Rank = int
+from flock.types import Rank
 
 
 @dataclass(frozen=True)

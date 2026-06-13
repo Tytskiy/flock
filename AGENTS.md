@@ -41,15 +41,20 @@ something is done, a non-obvious trade-off, or a subtle constraint.
   instead of `TypeVar`.
 - `@dataclass` for data, plain classes for bases with no fields.
 - `ClassVar` for class-level constants on dataclasses.
-- `from __future__ import annotations` in every module.
+- `from __future__ import annotations` only when a module needs forward
+  references (e.g. `Scheduler` used before its class body).
 - No docstrings on classes or functions whose name and signature already
   explain what they do.
 
 ## Project structure
 
 - `src/flock/` — library source
-- `tests/` — pytest tests (`test_scheduler.py` for low-level,
-  `test_api.py` for the public API)
+- `src/flock/p2p/` — point-to-point API and engine
+- `src/flock/collectives/` — collectives API, engine, groups
+- `src/flock/wait.py` — `Request`, shared wait machinery
+- `src/flock/scheduler/` — protocol, runtime hook, cooperative implementation
+- `tests/` — pytest tests mirroring package layout:
+  `test_distribute.py`, `p2p/`, `collectives/`, `scheduler/`
 - `justfile` — run `just check` (ruff + mypy), `just test`, `just fix`
 
 ## Tooling
@@ -63,9 +68,11 @@ something is done, a non-obvious trade-off, or a subtle constraint.
 ## Design principles
 
 - The scheduler is the only event loop. No asyncio, no threads.
-- Coroutines yield `Op` objects; the scheduler interprets them.
+- Operations register with engines via `require_runtime()`; `await future`
+  yields its handle for the scheduler to dispatch.
 - `contextvars` provide per-rank state (`rank()`, `world_size()`).
 - The public API (`flock.distribute`, `flock.isend`, etc.) is a thin
-  wrapper; all logic lives in the scheduler.
+  wrapper; logic lives in `P2PEngine` and `CollectiveEngine`, wired through
+  `Runtime` (`require_runtime()`).
 - Error messages should be clear and actionable, aimed at someone
   learning distributed programming.

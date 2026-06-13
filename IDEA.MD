@@ -29,10 +29,11 @@ print(ring())
 ## How it works
 
 1. Each rank is an `async def` coroutine.
-2. Operations like `isend`, `send`, `recv` yield `Op` objects to the scheduler
-   via `__await__`.
+2. Operations like `isend`, `send`, `recv`, and `barrier` register with
+   the runtime immediately; `await request` yields the handle for the
+   scheduler to dispatch.
 3. The scheduler picks a runnable rank (random or FIFO), resumes it, and
-   handles the yielded op (deliver message, block receiver, etc.).
+   delegates waits to `P2PEngine` or `CollectiveEngine`.
 4. When no rank can make progress, a deadlock error is raised with a
    diagnostic report.
 
@@ -42,12 +43,15 @@ No threads, no processes, no sockets. Just coroutines and a `while` loop.
 
 ```
 src/flock/
-  ops.py         # Op hierarchy: ISendOp, SendOp, RecvOp
-  scheduler.py   # Scheduler, Worker, Message, Policy (Random / Fifo)
-  context.py     # Per-rank contextvars: rank(), world_size()
-  api.py         # Public API: distribute, isend, send, recv, FlockAwaitable
-  errors.py      # FlockError, FlockDeadlockError, FlockUsageError
-  __init__.py    # Re-exports
+  p2p/                 # point-to-point API and engine
+  collectives/          # collectives API, engine, groups, futures
+  scheduler/            # protocol, runtime hook, cooperative implementation
+  context.py            # Per-rank contextvars: rank(), world_size()
+  decorator.py          # distribute decorator
+  errors.py             # FlockError, FlockDeadlockError, FlockUsageError
+  types.py              # Rank, Group, shared types
+  wait.py               # Request
+  __init__.py           # Re-exports
 ```
 
 ### Point-to-point operations
@@ -75,11 +79,14 @@ included so you can reproduce the exact interleaving.
 
 ## Roadmap
 
-### Collectives (next)
+### Collectives
 
-Implement as scheduler primitives, in this order:
+Implemented:
 
-1. `barrier()` — simplest; forces the collective-matching machinery
+- `barrier()` — collective matching via per-group sequence counters
+- `Request` async API — register on call, block on `await request`
+
+Planned, in this order:
 2. `broadcast(value, src=0)` — one sender, many receivers
 3. `all_gather(value)` — everyone contributes, everyone receives
 4. `reduce(value, op, dst=0)` / `all_reduce(value, op)` — reductions

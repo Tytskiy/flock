@@ -1,45 +1,11 @@
-from __future__ import annotations
-
 import functools
 import inspect
-import warnings
-from collections.abc import Callable, Coroutine, Generator
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from flock.context import make_context
 from flock.errors import FlockUsageError
-from flock.ops import ISendOp, Op, RecvOp, SendOp
-from flock.scheduler import Random, Scheduler, Worker
-
-
-class FlockAwaitable[OpT: Op]:
-    def __init__(self, op: OpT) -> None:
-        self._op = op
-        self._awaited = False
-
-    def __await__(self) -> Generator[OpT, Any, Any]:
-        self._awaited = True
-        return (yield self._op)
-
-    def __del__(self) -> None:
-        if not self._awaited:
-            warnings.warn(
-                f"flock.{self._op.name}(...) was created but never awaited",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-
-
-def isend[T](dst: int, value: T) -> FlockAwaitable[ISendOp[T]]:
-    return FlockAwaitable(ISendOp(dst=dst, value=value))
-
-
-def send[T](dst: int, value: T) -> FlockAwaitable[SendOp[T]]:
-    return FlockAwaitable(SendOp(dst=dst, value=value))
-
-
-def recv(src: int) -> FlockAwaitable[RecvOp]:
-    return FlockAwaitable(RecvOp(src=src))
+from flock.scheduler import CooperativeScheduler, Random, Worker
 
 
 def distribute[R](
@@ -85,7 +51,7 @@ def distribute[R](
                 )
                 for rank in range(workers)
             ]
-            return Scheduler(spawned, policy=Random(seed=seed)).run()
+            return CooperativeScheduler(spawned, policy=Random(seed=seed)).run()
 
         return wrapper
 

@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 class FlockError(Exception):
     pass
 
@@ -10,4 +7,8 @@ class FlockDeadlockError(FlockError):
 
 
 class FlockUsageError(FlockError):
+    pass
+
+
+class FlockCollectiveMismatch(FlockError):
     pass
