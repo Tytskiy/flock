@@ -7,7 +7,7 @@ from flock import FlockCollectiveMismatch, FlockUsageError, new_group
 def test_all_reduce_sum():
     @flock.distribute(workers=4)
     async def run():
-        return await flock.all_reduce(flock.rank(), "sum")
+        return await flock.all_reduce(flock.rank(), "sum").wait()
 
     assert run() == [6, 6, 6, 6]
 
@@ -18,7 +18,7 @@ def test_all_reduce_max_subgroup():
     @flock.distribute(workers=4)
     async def run():
         if flock.rank() in subset:
-            return await flock.all_reduce(flock.rank(), "max", group=subset)
+            return await flock.all_reduce(flock.rank(), "max", group=subset).wait()
         return None
 
     assert run() == [3, None, 3, 3]
@@ -28,8 +28,8 @@ def test_all_reduce_collective_mismatch():
     @flock.distribute(workers=2)
     async def run():
         if flock.rank() == 0:
-            await flock.barrier()
-        await flock.all_reduce(flock.rank(), "sum")
+            await flock.barrier().wait()
+        await flock.all_reduce(flock.rank(), "sum").wait()
         return "done"
 
     with pytest.raises(FlockCollectiveMismatch, match="all_reduce"):
@@ -40,7 +40,7 @@ def test_all_reduce_op_mismatch():
     @flock.distribute(workers=2)
     async def run():
         op = "sum" if flock.rank() == 0 else "max"
-        await flock.all_reduce(flock.rank(), op)
+        await flock.all_reduce(flock.rank(), op).wait()
         return "done"
 
     with pytest.raises(FlockCollectiveMismatch, match="op"):

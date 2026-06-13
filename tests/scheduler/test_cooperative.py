@@ -9,7 +9,7 @@ def test_results_are_deterministic_across_seeds(run_scheduler, seed):
     world = 5
 
     async def worker(rank):
-        await flock.isend((rank + 1) % world, rank)
+        await flock.isend((rank + 1) % world, rank).wait()
         return await flock.recv((rank - 1) % world)
 
     results = run_scheduler([worker(r) for r in range(world)], world, policy=Random(seed=seed))
@@ -21,7 +21,7 @@ def test_policies_agree_on_results(run_scheduler, policy):
     world = 4
 
     async def worker(rank):
-        await flock.isend((rank + 1) % world, rank)
+        await flock.isend((rank + 1) % world, rank).wait()
         return await flock.recv((rank - 1) % world)
 
     results = run_scheduler([worker(r) for r in range(world)], world, policy=policy)

@@ -9,7 +9,7 @@ def test_scatter_world():
     async def run():
         rank = flock.rank()
         values = ["a", "b", "c", "d"] if rank == 0 else None
-        return await flock.scatter(values, root=0)
+        return await flock.scatter(values, root=0).wait()
 
     assert run() == ["a", "b", "c", "d"]
 
@@ -24,7 +24,7 @@ def test_scatter_subgroup():
         if rank not in subset:
             return None
         values = ["x", "y"] if rank == root else None
-        return await flock.scatter(values, root=root, group=subset)
+        return await flock.scatter(values, root=root, group=subset).wait()
 
     assert run() == ["x", None, "y", None]
 
@@ -35,7 +35,7 @@ def test_scatter_root_mismatch():
         rank = flock.rank()
         root = 0 if rank == 0 else 1
         values = [rank, rank] if rank == root else None
-        await flock.scatter(values, root=root)
+        await flock.scatter(values, root=root).wait()
         return "done"
 
     with pytest.raises(FlockCollectiveMismatch, match="root"):
@@ -46,7 +46,7 @@ def test_scatter_non_root_values_raises():
     @flock.distribute(workers=2)
     async def run():
         values = [0, 1] if flock.rank() == 0 else ["unexpected"]
-        await flock.scatter(values, root=0)
+        await flock.scatter(values, root=0).wait()
         return "done"
 
     with pytest.raises(FlockUsageError, match="only the scatter root"):
@@ -56,7 +56,7 @@ def test_scatter_non_root_values_raises():
 def test_scatter_root_missing_values_raises():
     @flock.distribute(workers=2)
     async def run():
-        await flock.scatter(None, root=0)
+        await flock.scatter(None, root=0).wait()
         return "done"
 
     with pytest.raises(FlockUsageError, match="requires values on the root"):
@@ -67,7 +67,7 @@ def test_scatter_wrong_length_raises():
     @flock.distribute(workers=2)
     async def run():
         values = [0] if flock.rank() == 0 else None
-        await flock.scatter(values, root=0)
+        await flock.scatter(values, root=0).wait()
         return "done"
 
     with pytest.raises(FlockUsageError, match="provided 1 values"):

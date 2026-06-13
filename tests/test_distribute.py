@@ -20,7 +20,7 @@ def test_distribute_with_explicit_seed():
     @flock.distribute(workers=world, seed=123)
     async def run():
         rank = flock.rank()
-        await flock.isend((rank + 1) % world, rank)
+        await flock.isend((rank + 1) % world, rank).wait()
         return await flock.recv((rank - 1) % world)
 
     assert run() == [(r - 1) % world for r in range(world)]

@@ -9,7 +9,7 @@ def test_isend_recv_ring(run_scheduler):
     async def worker(rank):
         nxt = (rank + 1) % world
         prv = (rank - 1) % world
-        await flock.isend(nxt, f"hi from {rank}")
+        await flock.isend(nxt, f"hi from {rank}").wait()
         return await flock.recv(prv)
 
     results = run_scheduler([worker(r) for r in range(world)], world)

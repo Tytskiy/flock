@@ -46,7 +46,7 @@ def test_collective_kind_mismatch():
 def test_barrier_scheduler_low_level():
     async def participant():
         future = flock.barrier()
-        await future
+        await future.wait()
         return "done"
 
     results = CooperativeScheduler(

@@ -7,7 +7,7 @@ from flock import FlockDeadlockError, FlockUsageError, new_group
 def test_barrier_sync():
     @flock.distribute(workers=4)
     async def run():
-        await flock.barrier()
+        await flock.barrier().wait()
         return flock.rank()
 
     assert run() == [0, 1, 2, 3]
@@ -17,8 +17,8 @@ def test_barrier_async():
     @flock.distribute(workers=3)
     async def run():
         future = flock.barrier()
-        await flock.isend((flock.rank() + 1) % flock.world_size(), flock.rank())
-        await future
+        await flock.isend((flock.rank() + 1) % flock.world_size(), flock.rank()).wait()
+        await future.wait()
         return flock.rank()
 
     assert run() == [0, 1, 2]
@@ -30,7 +30,7 @@ def test_barrier_subgroup():
     @flock.distribute(workers=4)
     async def run():
         if flock.rank() in subset:
-            await flock.barrier(group=subset)
+            await flock.barrier(group=subset).wait()
             return "synced"
         return "skipped"
 
@@ -40,7 +40,7 @@ def test_barrier_subgroup():
 def test_barrier_world_constant():
     @flock.distribute(workers=2)
     async def run():
-        await flock.barrier(group=flock.WORLD)
+        await flock.barrier(group=flock.WORLD).wait()
         return "ok"
 
     assert run() == ["ok", "ok"]
@@ -50,7 +50,7 @@ def test_barrier_deadlock():
     @flock.distribute(workers=2)
     async def run():
         if flock.rank() == 0:
-            await flock.barrier()
+            await flock.barrier().wait()
         return "done"
 
     with pytest.raises(FlockDeadlockError, match="barrier"):
@@ -67,7 +67,7 @@ def test_barrier_non_member_raises():
     async def run():
         if flock.rank() == 2:
             return flock.barrier(group=new_group([0, 1]))
-        await flock.barrier()
+        await flock.barrier().wait()
         return flock.rank()
 
     with pytest.raises(FlockUsageError, match="not a member"):
@@ -78,7 +78,7 @@ def test_unawaited_barrier_raises():
     @flock.distribute(workers=2)
     async def run():
         flock.barrier()
-        await flock.barrier()
+        await flock.barrier().wait()
         return flock.rank()
 
     with pytest.raises(FlockUsageError, match="unawaited"):
