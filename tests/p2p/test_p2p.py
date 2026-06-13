@@ -87,3 +87,52 @@ def test_await_work_directly_raises():
 
     with pytest.raises(FlockUsageError, match="await work.wait"):
         run()
+
+
+def test_recv_waits_for_expected_peer():
+    @flock.distribute(workers=3, seed=0)
+    async def run():
+        if flock.rank() == 2:
+            await flock.isend(1, "from-2").wait()
+            return None
+        if flock.rank() == 0:
+            await flock.send(1, "from-0")
+            return None
+        return await flock.recv(0)
+
+    assert run() == [None, "from-0", None]
+
+
+def test_recv_picks_peer_from_out_of_order_mailbox():
+    @flock.distribute(workers=3, seed=0)
+    async def run():
+        if flock.rank() == 2:
+            await flock.isend(1, "from-2").wait()
+            await flock.barrier().wait()
+            await flock.barrier().wait()
+            return None
+        if flock.rank() == 0:
+            await flock.barrier().wait()
+            await flock.isend(1, "from-0").wait()
+            await flock.barrier().wait()
+            return None
+        await flock.barrier().wait()
+        await flock.barrier().wait()
+        first = await flock.recv(0)
+        second = await flock.recv(2)
+        return (first, second)
+
+    assert run()[1] == ("from-0", "from-2")
+
+
+@pytest.mark.parametrize("peer", [-1, 2])
+def test_p2p_invalid_peer_raises(peer):
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        if flock.rank() == 0:
+            flock.isend(peer, "x")
+            return None
+        return await flock.recv(0)
+
+    with pytest.raises(FlockUsageError, match="out of range"):
+        run()

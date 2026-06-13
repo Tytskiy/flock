@@ -50,25 +50,25 @@ something is done, a non-obvious trade-off, or a subtle constraint.
 
 - `src/flock/` — library source
 - `src/flock/p2p/` — point-to-point API and engine
-- `src/flock/collectives/` — collectives API, engine, groups
-- `src/flock/wait.py` — `Request`, shared wait machinery
+- `src/flock/collectives/` — collectives API and engine
+- `src/flock/wait.py` — `Work`, shared wait machinery
 - `src/flock/scheduler/` — protocol, runtime hook, cooperative implementation
 - `tests/` — pytest tests mirroring package layout:
-  `test_distribute.py`, `p2p/`, `collectives/`, `scheduler/`
+  `test_distribute.py`, `p2p/`, `collectives/`, `scheduler/`, `typing/`
 - `justfile` — run `just check` (ruff + mypy), `just test`, `just fix`
 
 ## Tooling
 
 - `uv` for dependency management
 - `ruff` for linting and formatting
-- `mypy` for type checking (src only, strict-ish)
+- `mypy` for type checking (`src` + `tests/typing`, strict-ish)
 - `pytest` for tests
 - Run `just check && just test` after changes
 
 ## Design principles
 
 - The scheduler is the only event loop. No asyncio, no threads.
-- Operations register with engines via `require_runtime()`; `await future`
+- Operations register with engines via `require_runtime()`; `await work.wait()`
   yields its handle for the scheduler to dispatch.
 - `contextvars` provide per-rank state (`rank()`, `world_size()`).
 - The public API (`flock.distribute`, `flock.isend`, etc.) is a thin

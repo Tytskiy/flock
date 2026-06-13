@@ -57,3 +57,11 @@ def test_mutual_recv_deadlocks(run_scheduler):
 
     with pytest.raises(flock.FlockDeadlockError):
         run_scheduler([worker(0), worker(1)], 2)
+
+
+def test_invalid_peer_raises(run_scheduler):
+    async def worker():
+        flock.isend(2, "x")
+
+    with pytest.raises(flock.FlockUsageError, match="out of range"):
+        run_scheduler([worker(), worker()], 2)

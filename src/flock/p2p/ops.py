@@ -41,3 +41,13 @@ class Recv:
     @property
     def peer(self) -> Rank:
         return self.src
+
+
+@dataclass(frozen=True)
+class Irecv:
+    kind: ClassVar[str] = "irecv"
+    src: Rank
+
+    @property
+    def peer(self) -> Rank:
+        return self.src
