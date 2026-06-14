@@ -13,8 +13,8 @@ async def _collectives() -> None:
     assert_type(flock.all_reduce(1.0, "sum"), flock.Work[float])
     assert_type(await flock.all_reduce(1.0, "sum").wait(), float)
 
-    assert_type(flock.scatter(["a"], root=0), flock.Work[str])
-    assert_type(await flock.scatter(["a"], root=0).wait(), str)
+    assert_type(flock.scatter(["a"], src=0), flock.Work[str])
+    assert_type(await flock.scatter(["a"], src=0).wait(), str)
 
 
 async def _recv_int(src: int) -> int:

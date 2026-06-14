@@ -2,12 +2,12 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any
 
-from flock.context import rank as current_rank
+from flock.context import get_rank as get_current_rank
 from flock.errors import FlockUsageError
 from flock.p2p.handle import P2PHandle
 from flock.p2p.ops import Irecv, Isend, P2PCall, Recv, Send
 from flock.scheduler.port import SchedulePort
-from flock.types import Rank
+from flock.types import Rank, RequestId
 
 
 @dataclass
@@ -31,12 +31,12 @@ class P2PEngine:
         self.mailboxes: defaultdict[Rank, defaultdict[Rank, deque[Message]]] = defaultdict(
             lambda: defaultdict(deque)
         )
-        self.requests: dict[Rank, P2PRequest] = {}
+        self.requests: dict[RequestId, P2PRequest] = {}
         self.blocked: dict[Rank, P2PHandle] = {}
         self._request_counter = 0
 
     def begin(self, call: P2PCall) -> P2PHandle:
-        rank = current_rank()
+        rank = get_current_rank()
         self._validate_peer(call.peer)
         handle = self._new_handle(call.kind, rank, call.peer)
 
@@ -100,18 +100,20 @@ class P2PEngine:
     def deadlock_lines(self) -> list[str]:
         lines: list[str] = []
 
+        seen_send: set[Rank] = set()
+
         for rank, handle in sorted(self.blocked.items()):
             lines.append(f"rank {rank} is blocked in {handle.kind} waiting for rank {handle.peer}")
+            if handle.kind == "send":
+                seen_send.add(rank)
 
         for dst, by_src in sorted(self.mailboxes.items()):
             for mailbox in by_src.values():
                 for message in mailbox:
                     if message.ack and message.send_id is not None:
                         request = self.requests.get(message.send_id)
-                        if request is not None and not request.done:
-                            lines.append(
-                                f"rank {message.src} is blocked in send waiting for rank {dst}"
-                            )
+                        if request is not None and not request.done and message.src is not seen_send:
+                            lines.append(f"rank {message.src} is blocked in send waiting for rank {dst}")
 
         return lines
 

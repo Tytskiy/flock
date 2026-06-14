@@ -4,12 +4,12 @@ import flock
 from flock import FlockUsageError
 
 
-def test_rank_and_world_size():
+def test_rank_and_get_world_size():
     world = 3
 
     @flock.distribute(workers=world)
     async def run():
-        return flock.rank(), flock.world_size()
+        return flock.get_rank(), flock.get_world_size()
 
     assert run() == [(0, 3), (1, 3), (2, 3)]
 
@@ -19,7 +19,7 @@ def test_distribute_with_explicit_seed():
 
     @flock.distribute(workers=world, seed=123)
     async def run():
-        rank = flock.rank()
+        rank = flock.get_rank()
         await flock.isend((rank + 1) % world, rank).wait()
         return await flock.recv((rank - 1) % world)
 
@@ -58,4 +58,4 @@ def test_distribute_invalid_worker_count_raises(workers):
 
 def test_rank_outside_distribute_raises():
     with pytest.raises(FlockUsageError):
-        flock.rank()
+        flock.get_rank()

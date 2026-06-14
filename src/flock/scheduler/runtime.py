@@ -24,7 +24,14 @@ class PendingRegistry:
         self._pending[handle.rank].append(handle)
 
     def mark_awaited(self, handle: Handle) -> None:
-        self._pending[handle.rank].remove(handle)
+        pending = self._pending[handle.rank]
+        try:
+            pending.remove(handle)
+        except ValueError:
+            raise FlockUsageError(
+                f"rank {handle.rank} tried to wait on flock.{handle.kind}(...) again.\n"
+                "Each Work can only be awaited once."
+            ) from None
 
     def check(self, rank: Rank) -> None:
         lines = self._bullet_lines_for(rank)

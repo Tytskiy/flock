@@ -14,9 +14,9 @@ import flock
 
 @flock.distribute(workers=4)
 async def ring():
-    rank = flock.rank()
-    nxt = (rank + 1) % flock.world_size()
-    prv = (rank - 1) % flock.world_size()
+    rank = flock.get_rank()
+    nxt = (rank + 1) % flock.get_world_size()
+    prv = (rank - 1) % flock.get_world_size()
 
     await flock.isend(nxt, f"hello from {rank}").wait()
     return await flock.recv(prv)
@@ -44,8 +44,8 @@ operation immediately — even before `.wait()`. That lets ranks overlap
 communication with local work:
 
 ```python
-work = flock.all_gather(flock.rank())
-await flock.isend(nxt, flock.rank()).wait()  # do other comms first
+work = flock.all_gather(flock.get_rank())
+await flock.isend(nxt, flock.get_rank()).wait()  # do other comms first
 result = await work.wait()
 ```
 
@@ -62,7 +62,7 @@ src/flock/
   p2p/                  # point-to-point API and engine
   collectives/          # collectives API and engine
   scheduler/            # protocol, runtime, cooperative implementation
-  context.py            # per-rank contextvars: rank(), world_size()
+  context.py            # per-rank contextvars: get_rank(), get_world_size()
   decorator.py          # @distribute
   errors.py             # FlockError, FlockDeadlockError, FlockUsageError, ...
   types.py              # Rank, Group, new_group(), WORLD
@@ -94,7 +94,7 @@ All return `Work[...]`; complete with `await work.wait()`.
 | `barrier()` | `None` |
 | `all_gather(value)` | `list[T]` |
 | `all_reduce(value, op)` | `T` |
-| `scatter(values, root)` | `T` |
+| `scatter(values, src)` | `T` |
 
 Groups: `flock.new_group([0, 2])` or omit `group` / pass `flock.WORLD` for all
 ranks. Mismatched collective kinds at the same site raise `FlockCollectiveMismatch`.

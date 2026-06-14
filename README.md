@@ -11,9 +11,9 @@ import flock
 
 @flock.distribute(workers=4)
 async def ring():
-    rank = flock.rank()
-    nxt = (rank + 1) % flock.world_size()
-    prv = (rank - 1) % flock.world_size()
+    rank = flock.get_rank()
+    nxt = (rank + 1) % flock.get_world_size()
+    prv = (rank - 1) % flock.get_world_size()
 
     await flock.isend(nxt, f"hello from {rank}").wait()
     return await flock.recv(prv)

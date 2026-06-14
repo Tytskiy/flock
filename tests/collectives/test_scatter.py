@@ -7,67 +7,67 @@ from flock import FlockCollectiveMismatch, FlockUsageError, new_group
 def test_scatter_world():
     @flock.distribute(workers=4)
     async def run():
-        rank = flock.rank()
+        rank = flock.get_rank()
         values = ["a", "b", "c", "d"] if rank == 0 else None
-        return await flock.scatter(values, root=0).wait()
+        return await flock.scatter(values, src=0).wait()
 
     assert run() == ["a", "b", "c", "d"]
 
 
 def test_scatter_subgroup():
-    subset = new_group([0, 2])
-    root = 0
+    group = new_group([0, 2])
+    src = 0
 
     @flock.distribute(workers=4)
     async def run():
-        rank = flock.rank()
-        if rank not in subset:
+        rank = flock.get_rank()
+        if rank not in group:
             return None
-        values = ["x", "y"] if rank == root else None
-        return await flock.scatter(values, root=root, group=subset).wait()
+        values = ["x", "y"] if rank == src else None
+        return await flock.scatter(values, src=src, group=group).wait()
 
     assert run() == ["x", None, "y", None]
 
 
-def test_scatter_root_mismatch():
+def test_scatter_src_mismatch():
     @flock.distribute(workers=2)
     async def run():
-        rank = flock.rank()
-        root = 0 if rank == 0 else 1
-        values = [rank, rank] if rank == root else None
-        await flock.scatter(values, root=root).wait()
+        rank = flock.get_rank()
+        src = 0 if rank == 0 else 1
+        values = [rank, rank] if rank == src else None
+        await flock.scatter(values, src=src).wait()
         return "done"
 
-    with pytest.raises(FlockCollectiveMismatch, match="root"):
+    with pytest.raises(FlockCollectiveMismatch, match="src"):
         run()
 
 
-def test_scatter_non_root_values_raises():
+def test_scatter_non_src_values_raises():
     @flock.distribute(workers=2)
     async def run():
-        values = [0, 1] if flock.rank() == 0 else ["unexpected"]
-        await flock.scatter(values, root=0).wait()
+        values = [0, 1] if flock.get_rank() == 0 else ["unexpected"]
+        await flock.scatter(values, src=0).wait()
         return "done"
 
-    with pytest.raises(FlockUsageError, match="only the scatter root"):
+    with pytest.raises(FlockUsageError, match="only the scatter src"):
         run()
 
 
-def test_scatter_root_missing_values_raises():
+def test_scatter_src_missing_values_raises():
     @flock.distribute(workers=2)
     async def run():
-        await flock.scatter(None, root=0).wait()
+        await flock.scatter(None, src=0).wait()
         return "done"
 
-    with pytest.raises(FlockUsageError, match="requires values on the root"):
+    with pytest.raises(FlockUsageError, match="requires values on the src"):
         run()
 
 
 def test_scatter_wrong_length_raises():
     @flock.distribute(workers=2)
     async def run():
-        values = [0] if flock.rank() == 0 else None
-        await flock.scatter(values, root=0).wait()
+        values = [0] if flock.get_rank() == 0 else None
+        await flock.scatter(values, src=0).wait()
         return "done"
 
     with pytest.raises(FlockUsageError, match="provided 1 values"):
@@ -76,4 +76,4 @@ def test_scatter_wrong_length_raises():
 
 def test_scatter_outside_distribute_raises():
     with pytest.raises(FlockUsageError, match="wrong place"):
-        flock.scatter([0], root=0)
+        flock.scatter([0], src=0)

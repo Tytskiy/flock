@@ -70,7 +70,7 @@ something is done, a non-obvious trade-off, or a subtle constraint.
 - The scheduler is the only event loop. No asyncio, no threads.
 - Operations register with engines via `require_runtime()`; `await work.wait()`
   yields its handle for the scheduler to dispatch.
-- `contextvars` provide per-rank state (`rank()`, `world_size()`).
+- `contextvars` provide per-rank state (`get_rank()`, `get_world_size()`).
 - The public API (`flock.distribute`, `flock.isend`, etc.) is a thin
   wrapper; logic lives in `P2PEngine` and `CollectiveEngine`, wired through
   `Runtime` (`require_runtime()`).

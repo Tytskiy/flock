@@ -9,9 +9,9 @@ def test_isend_recv_ring():
 
     @flock.distribute(workers=world)
     async def run():
-        rank = flock.rank()
-        nxt = (rank + 1) % flock.world_size()
-        prv = (rank - 1) % flock.world_size()
+        rank = flock.get_rank()
+        nxt = (rank + 1) % flock.get_world_size()
+        prv = (rank - 1) % flock.get_world_size()
         await flock.isend(nxt, f"hi from {rank}").wait()
         return await flock.recv(prv)
 
@@ -21,7 +21,7 @@ def test_isend_recv_ring():
 def test_synchronous_send():
     @flock.distribute(workers=2)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             await flock.send(1, "ping")
             return "sent"
         return await flock.recv(0)
@@ -32,7 +32,7 @@ def test_synchronous_send():
 def test_recv_deadlock():
     @flock.distribute(workers=2)
     async def run():
-        other = 1 - flock.rank()
+        other = 1 - flock.get_rank()
         return await flock.recv(other)
 
     with pytest.raises(FlockDeadlockError):
@@ -42,7 +42,7 @@ def test_recv_deadlock():
 def test_unawaited_op_raises():
     @flock.distribute(workers=2)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             flock.isend(1, "x")
         await flock.barrier().wait()
         return "done"
@@ -54,7 +54,7 @@ def test_unawaited_op_raises():
 def test_exits_with_unawaited_send_raises():
     @flock.distribute(workers=2, seed=0)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             flock.isend(1, "ping")
             return None
         return await flock.recv(0)
@@ -71,7 +71,7 @@ def test_op_outside_distribute_raises():
 def test_awaited_op_does_not_warn():
     @flock.distribute(workers=2)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             await flock.isend(1, "x").wait()
             return "sent"
         return await flock.recv(0)
@@ -92,10 +92,10 @@ def test_await_work_directly_raises():
 def test_recv_waits_for_expected_peer():
     @flock.distribute(workers=3, seed=0)
     async def run():
-        if flock.rank() == 2:
+        if flock.get_rank() == 2:
             await flock.isend(1, "from-2").wait()
             return None
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             await flock.send(1, "from-0")
             return None
         return await flock.recv(0)
@@ -106,12 +106,12 @@ def test_recv_waits_for_expected_peer():
 def test_recv_picks_peer_from_out_of_order_mailbox():
     @flock.distribute(workers=3, seed=0)
     async def run():
-        if flock.rank() == 2:
+        if flock.get_rank() == 2:
             await flock.isend(1, "from-2").wait()
             await flock.barrier().wait()
             await flock.barrier().wait()
             return None
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             await flock.barrier().wait()
             await flock.isend(1, "from-0").wait()
             await flock.barrier().wait()
@@ -129,10 +129,21 @@ def test_recv_picks_peer_from_out_of_order_mailbox():
 def test_p2p_invalid_peer_raises(peer):
     @flock.distribute(workers=2, seed=0)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             flock.isend(peer, "x")
             return None
         return await flock.recv(0)
 
     with pytest.raises(FlockUsageError, match="out of range"):
+        run()
+
+
+def test_double_wait_raises():
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        work = flock.isend(1, "x")
+        await work.wait()
+        await work.wait()
+
+    with pytest.raises(FlockUsageError, match="again"):
         run()

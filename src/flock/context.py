@@ -26,18 +26,18 @@ def current() -> Context:
     ctx = _current.get()
     if ctx is None:
         raise FlockUsageError(
-            "flock.rank() or flock.world_size() were used in the wrong place.\n"
+            "flock.get_rank() or flock.get_world_size() were used in the wrong place.\n"
             "They only work inside a function you start with @flock.distribute:\n\n"
             "    @flock.distribute(workers=4)\n"
             "    async def run():\n"
-            "        print(flock.rank(), flock.world_size())"
+            "        print(flock.get_rank(), flock.get_world_size())"
         )
     return ctx
 
 
-def rank() -> Rank:
+def get_rank() -> Rank:
     return current().rank
 
 
-def world_size() -> int:
+def get_world_size() -> int:
     return current().world_size

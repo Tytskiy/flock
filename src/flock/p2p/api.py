@@ -3,7 +3,7 @@ from typing import Any, cast
 from flock.p2p.ops import Irecv, Isend, Recv, Send
 from flock.scheduler.runtime import require_runtime
 from flock.types import Rank
-from flock.wait import Work
+from flock.work import Work
 
 
 def isend[T](dst: Rank, value: T) -> Work[None]:

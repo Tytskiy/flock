@@ -18,6 +18,11 @@ def run_scheduler():
         if policy is None:
             policy = Random(seed=0)
         workers = [Worker(coro, context=make_context(rank, world_size)) for rank, coro in enumerate(coros)]
-        return CooperativeScheduler(workers, policy=policy).run()
+        try:
+            return CooperativeScheduler(workers, policy=policy).run()
+        except BaseException:
+            for worker in workers:
+                worker.coro.close()
+            raise
 
     return _run

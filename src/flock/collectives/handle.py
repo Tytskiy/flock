@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from flock.types import Group, Rank
+from flock.types import Group, Rank, RequestId
 
 
 @dataclass(frozen=True)
@@ -9,4 +9,4 @@ class CollectiveHandle:
     index: int
     rank: Rank
     kind: str
-    request_id: int
+    request_id: RequestId

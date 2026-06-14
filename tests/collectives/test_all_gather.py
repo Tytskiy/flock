@@ -7,7 +7,7 @@ from flock import FlockCollectiveMismatch, FlockUsageError, new_group
 def test_all_gather_world():
     @flock.distribute(workers=4)
     async def run():
-        return await flock.all_gather(f"rank {flock.rank()}").wait()
+        return await flock.all_gather(f"rank {flock.get_rank()}").wait()
 
     assert run() == [
         ["rank 0", "rank 1", "rank 2", "rank 3"],
@@ -18,12 +18,12 @@ def test_all_gather_world():
 
 
 def test_all_gather_subgroup():
-    subset = new_group([0, 2])
+    group = new_group([0, 2])
 
     @flock.distribute(workers=4)
     async def run():
-        if flock.rank() in subset:
-            return await flock.all_gather(flock.rank(), group=subset).wait()
+        if flock.get_rank() in group:
+            return await flock.all_gather(flock.get_rank(), group=group).wait()
         return None
 
     assert run() == [[0, 2], None, [0, 2], None]
@@ -32,8 +32,8 @@ def test_all_gather_subgroup():
 def test_all_gather_async():
     @flock.distribute(workers=3)
     async def run():
-        future = flock.all_gather(flock.rank())
-        await flock.isend((flock.rank() + 1) % flock.world_size(), flock.rank()).wait()
+        future = flock.all_gather(flock.get_rank())
+        await flock.isend((flock.get_rank() + 1) % flock.get_world_size(), flock.get_rank()).wait()
         return await future.wait()
 
     assert run() == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
@@ -42,9 +42,9 @@ def test_all_gather_async():
 def test_all_gather_collective_mismatch():
     @flock.distribute(workers=2)
     async def run():
-        if flock.rank() == 0:
+        if flock.get_rank() == 0:
             await flock.barrier().wait()
-        await flock.all_gather(flock.rank()).wait()
+        await flock.all_gather(flock.get_rank()).wait()
         return "done"
 
     with pytest.raises(FlockCollectiveMismatch, match="all_gather"):

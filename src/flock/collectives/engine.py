@@ -3,10 +3,10 @@ from dataclasses import dataclass, field
 
 from flock.collectives.handle import CollectiveHandle
 from flock.collectives.ops import CollectiveCall, CollectiveState
-from flock.context import rank as current_rank
+from flock.context import get_rank as get_current_rank
 from flock.errors import FlockCollectiveMismatch, FlockUsageError
 from flock.scheduler.port import SchedulePort
-from flock.types import Group, Rank
+from flock.types import Group, Rank, _default_world_group, _World
 
 
 @dataclass
@@ -27,7 +27,7 @@ class CollectiveEngine:
         self._request_counter = 0
 
     def begin(self, group: Group | None, call: CollectiveCall) -> CollectiveHandle:
-        rank = current_rank()
+        rank = get_current_rank()
         members = self._resolve_group(group, rank)
         index = self.counters[(rank, members)]
         key = (members, index)
@@ -72,9 +72,9 @@ class CollectiveEngine:
 
         slot.waiting.add(rank)
 
-        if slot.arrived == slot.members and slot.waiting == slot.members:
+        if slot.waiting == set(slot.members):
             del self.slots[key]
-            for waiting_rank in slot.waiting:
+            for waiting_rank in sorted(slot.waiting):
                 if waiting_rank in self.blocked:
                     del self.blocked[waiting_rank]
                 result = slot.state.complete(slot.members, waiting_rank)
@@ -92,8 +92,8 @@ class CollectiveEngine:
                 f"(collective #{collective.index}, group size {len(collective.group)})"
             )
 
-        for (_members, index), slot in sorted(self.slots.items()):
-            missing = slot.members - slot.arrived
+        for (_, index), slot in sorted(self.slots.items()):
+            missing = set(slot.members) - slot.arrived
             if missing:
                 lines.append(
                     f"collective #{index} ({slot.state.kind}) is waiting for ranks {sorted(missing)} to enter"
@@ -108,8 +108,8 @@ class CollectiveEngine:
 
         return lines
 
-    def _resolve_group(self, group: Group | None, rank: Rank) -> Group:
-        members = frozenset(range(self._world_size)) if group is None else group
+    def _resolve_group(self, group: Group, rank: Rank) -> Group:
+        members = _default_world_group(self._world_size) if group is _World() else group
 
         if not members:
             raise FlockUsageError("a group must contain at least one rank.")
