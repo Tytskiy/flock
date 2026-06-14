@@ -8,7 +8,7 @@ RequestId = int
 
 @dataclass(frozen=True)
 class Group:
-    ranks: tuple[int]
+    ranks: tuple[int, ...]
     id: int
 
     def __iter__(self):
@@ -21,12 +21,12 @@ class Group:
         return self.ranks.index(idx)
 
 
-class _World:
+class _World(Group):
     instance = None
 
     def __new__(cls):
         if cls.instance is None:
-            cls.instance = Group([], -1)
+            cls.instance = Group((), -1)
 
         return cls.instance
 
@@ -34,15 +34,24 @@ class _World:
 WORLD: Group = _World()
 
 
-def new_group(ranks: Sequence[Rank]) -> Group:
-    if getattr(new_group, "group_id", None) is None:
-        new_group.group_id = 1
+class _GroupId(int):
+    instance = None
 
+    def __new__(cls):
+        if cls.instance is None:
+            cls.instance = 0
+
+            return cls.instance
+
+        cls.instance += 1
+        return cls.instance
+
+
+def new_group(ranks: Sequence[Rank]) -> Group:
     assert len(set(ranks)) == len(ranks)
     ranks = tuple(sorted(ranks))
 
-    id = new_group.group_id
-    new_group.group_id += 1
+    id = _GroupId()
 
     return Group(ranks=ranks, id=id)
 

@@ -70,7 +70,7 @@ class Runtime:
         self.pending.register(handle)
         return handle
 
-    def begin_collective(self, group: Group | None, call: CollectiveCall) -> CollectiveHandle:
+    def begin_collective(self, group: Group, call: CollectiveCall) -> CollectiveHandle:
         handle = self.collectives.begin(group, call)
         self.pending.register(handle)
         return handle

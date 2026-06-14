@@ -26,7 +26,7 @@ class CollectiveEngine:
         self.blocked: dict[Rank, CollectiveHandle] = {}
         self._request_counter = 0
 
-    def begin(self, group: Group | None, call: CollectiveCall) -> CollectiveHandle:
+    def begin(self, group: Group, call: CollectiveCall) -> CollectiveHandle:
         rank = get_current_rank()
         members = self._resolve_group(group, rank)
         index = self.counters[(rank, members)]
