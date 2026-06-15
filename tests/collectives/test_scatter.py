@@ -70,7 +70,7 @@ def test_scatter_wrong_length_raises():
         await flock.scatter(values, src=0).wait()
         return "done"
 
-    with pytest.raises(FlockUsageError, match="provided 1 values"):
+    with pytest.raises(FlockUsageError, match="provided 1"):
         run()
 
 

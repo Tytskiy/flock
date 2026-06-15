@@ -105,7 +105,16 @@ register on call, so you can start one and overlap the wait with local work.
 | `barrier()` | `None` |
 | `all_gather(value)` | `list[T]` |
 | `all_reduce(value, op)` | `T` |
+| `reduce(value, op, dst)` | `T` on `dst`, else `None` |
+| `broadcast(value, src)` | `T` |
+| `gather(value, dst)` | `list[T]` on `dst`, else `None` |
 | `scatter(values, src)` | `T` |
+| `reduce_scatter(values, op)` | `T` |
+| `all_to_all(values)` | `list[T]` |
+
+`op` accepts a named op (`"sum"`, `ReduceOp.PROD`, …) or any binary callable
+`(a, b) -> c` — e.g. `torch.minimum` for tensor reductions, keeping the core
+torch-free.
 
 Groups: `flock.new_group([0, 2])` or omit `group` / pass `flock.WORLD` for all
 ranks. Mismatched collective kinds at the same site raise `FlockCollectiveMismatch`.
@@ -129,16 +138,67 @@ reports which ranks are stuck and why. Unawaited operations are listed first
 details. If a random seed was used, it's included so you can reproduce the
 exact interleaving.
 
-## Roadmap
+## Vision: a distributed-training course
 
-### Collectives — planned
+flock is the runtime under a "build distributed training from scratch" course, in
+the spirit of the Tensor / GPU / Triton Puzzles: each puzzle is a spec + expected
+output + a body to fill, graded automatically. The deterministic scheduler and
+deadlock diagnostics are the teaching superpower — students *see* interleavings,
+hangs, and overlap that real frameworks hide.
 
-- `broadcast(value, src=0)` — one sender, many receivers
-- `reduce(value, op, dst=0)` — reduction to one rank
+### Substrate decisions
 
-### Later
+- **Tensors & autograd: real (CPU) `torch`.** Payloads are torch tensors; forward
+  and backward use torch autograd. This keeps the lessons transferable to actual
+  `torch.distributed`.
+- **Core stays dependency-free.** The flock runtime is just coroutines + mailboxes
+  and does not import torch. Torch is a *course/puzzle* dependency group; the engine
+  treats a tensor as any other value.
 
-- Ring / tree algorithm implementations (educational)
-- Trace / debug mode (log which rank ran which op)
-- Process backend (real isolation, closer to torchrun)
-- Socket backend (real networking)
+### Two ideas the whole course is built around
+
+1. **Collectives are p2p algorithms.** Implement `all_reduce` (ring vs recursive
+   halving/doubling), `broadcast` (flat vs tree), etc., from `send`/`recv`, and
+   compare them by message count / rounds / bytes.
+2. **Redistribution is collectives.** Once DTensor exists, every placement change is
+   a collective:
+   - `Shard → Replicate` = `all_gather`
+   - `Replicate → Shard` = local slice (no comm)
+   - `Partial → Replicate` = `all_reduce`
+   - `Shard(i) → Shard(j)` = `all_to_all`
+
+### Tiers
+
+0. **Mental model** — ranks, the scheduler, deadlocks (plain Python values).
+1. **P2P → collectives → algorithms** — semantics, then implement collectives from
+   p2p (ring/tree), with a trace/cost model to compare them.
+2. **Tensors + autograd → DeviceMesh / Placements / DTensor** — `redistribute` as
+   collectives; DeviceMesh is an n-d reshape of the world handing back a `Group`
+   per dim.
+3. **Data parallel** — DDP (all_reduce grads), bucketing + comm/compute overlap,
+   then ZeRO 1/2/3 as the ramp into sharding.
+4. **Model parallelisms** — FSDP, TP, CP, EP, PP, and a 2D/3D composition capstone
+   (TP × DP × PP) — the real DeviceMesh payoff.
+
+### Library prerequisites (by tier)
+
+- Tier 1: `broadcast`, `reduce`, `gather`, `reduce_scatter`, `all_to_all`; a
+  trace/cost model (messages, rounds, bytes).
+- Tier 2: `DeviceMesh`, `Shard`/`Replicate`/`Partial`, `redistribute`.
+- Tier 3–4: nothing new in the engine for PP (it's p2p of activations — best
+  showcase for visualizing GPipe vs 1F1B bubbles); CP wants ring p2p + online
+  softmax; EP wants `all_to_all`. `tag` / ANY_SOURCE `recv` become useful here.
+
+### Topics not to forget
+
+- Comm/compute overlap & prefetch (DDP buckets, FSDP all-gather prefetch) — built on
+  "post early, await late" + `work.is_completed()`.
+- Gradient accumulation / micro-batching (prereq for PP).
+- Sharded checkpoint save/load (DTensor state dict).
+- Numerics & debugging: all_reduce float ordering, shape/rank-mismatch diagnostics.
+
+### Engine roadmap
+
+- Trace / debug mode (log which rank ran which op; communication volume).
+- `tag` and ANY_SOURCE `recv`.
+- Process / socket backends (real isolation, closer to torchrun).

@@ -1,4 +1,17 @@
-from .collectives import WORLD, Group, ReduceOp, all_gather, all_reduce, barrier, scatter
+from .collectives import (
+    WORLD,
+    Group,
+    ReduceOp,
+    all_gather,
+    all_reduce,
+    all_to_all,
+    barrier,
+    broadcast,
+    gather,
+    reduce,
+    reduce_scatter,
+    scatter,
+)
 from .context import get_rank, get_world_size
 from .decorator import distribute
 from .errors import FlockCollectiveMismatch, FlockDeadlockError, FlockError, FlockUsageError
@@ -18,6 +31,11 @@ __all__ = [
     "Work",
     "all_gather",
     "all_reduce",
+    "all_to_all",
+    "broadcast",
+    "gather",
+    "reduce",
+    "reduce_scatter",
     "scatter",
     "barrier",
     "ReduceOp",

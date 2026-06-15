@@ -47,6 +47,14 @@ def test_all_reduce_op_mismatch():
         run()
 
 
+def test_all_reduce_with_callback_op():
+    @flock.distribute(workers=3)
+    async def run():
+        return await flock.all_reduce(flock.get_rank() + 1, lambda a, b: a * b).wait()
+
+    assert run() == [6, 6, 6]
+
+
 def test_all_reduce_incompatible_values_raises():
     @flock.distribute(workers=2)
     async def run():
