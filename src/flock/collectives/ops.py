@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Sequence
+import operator
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, ClassVar, Protocol
@@ -28,7 +29,7 @@ class CollectiveCall(Protocol):
 
     def begin(self, rank: Rank) -> CollectiveState: ...
 
-    def enter(self, state: CollectiveState, rank: Rank) -> None: ...
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class Barrier:
     def begin(self, rank: Rank) -> BarrierState:
         return BarrierState()
 
-    def enter(self, state: CollectiveState, rank: Rank) -> None:
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None:
         if not isinstance(state, BarrierState):
             raise TypeError(f"expected BarrierState, got {type(state).__name__}")
 
@@ -51,7 +52,7 @@ class AllGather:
     def begin(self, rank: Rank) -> AllGatherState:
         return AllGatherState()
 
-    def enter(self, state: CollectiveState, rank: Rank) -> None:
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None:
         if not isinstance(state, AllGatherState):
             raise TypeError(f"expected AllGatherState, got {type(state).__name__}")
         state.values[rank] = self.value
@@ -66,7 +67,7 @@ class AllReduce:
     def begin(self, rank: Rank) -> AllReduceState:
         return AllReduceState(op=self.op)
 
-    def enter(self, state: CollectiveState, rank: Rank) -> None:
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None:
         if not isinstance(state, AllReduceState):
             raise TypeError(f"expected AllReduceState, got {type(state).__name__}")
         if state.op != self.op:
@@ -87,7 +88,7 @@ class Scatter:
     def begin(self, rank: Rank) -> ScatterState:
         return ScatterState(src=self.src)
 
-    def enter(self, state: CollectiveState, rank: Rank) -> None:
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None:
         if not isinstance(state, ScatterState):
             raise TypeError(f"expected ScatterState, got {type(state).__name__}")
         if state.src != self.src:
@@ -95,9 +96,16 @@ class Scatter:
                 f"rank {rank} called scatter with src {self.src}, "
                 f"but other ranks in the group already started with src {state.src}."
             )
+        if self.src not in members:
+            raise FlockUsageError(f"scatter src {self.src} is not in the group (members: {sorted(members)}).")
         if rank == self.src:
             if self.values is None:
                 raise FlockUsageError("scatter requires values on the src rank.")
+            if len(self.values) != len(members):
+                raise FlockUsageError(
+                    f"scatter src provided {len(self.values)} values, "
+                    f"but the group has {len(members)} members."
+                )
             state.values = list(self.values)
         elif self.values is not None:
             raise FlockUsageError("only the scatter src rank should provide values.")
@@ -137,28 +145,26 @@ class ScatterState:
     values: list[Any] | None = None
 
     def complete(self, members: Group, rank: Rank) -> Any:
-        if self.src not in members:
-            raise FlockUsageError(f"scatter src {self.src} is not in the group.")
         if self.values is None:
             raise FlockUsageError("scatter src did not provide values.")
-        if len(self.values) != len(members):
-            raise FlockUsageError(
-                f"scatter src provided {len(self.values)} values, but the group has {len(members)} members."
-            )
         return copy.deepcopy(self.values[members.index(rank)])
+
+
+_REDUCERS: dict[ReduceOp, Callable[[Any, Any], Any]] = {
+    ReduceOp.SUM: operator.add,
+    ReduceOp.PROD: operator.mul,
+    ReduceOp.MIN: min,
+    ReduceOp.MAX: max,
+}
 
 
 def reduce_value(op: ReduceOp, acc: Any | None, curr: Any) -> Any:
     if acc is None:
         return curr
-    match op:
-        case ReduceOp.SUM:
-            return acc + curr
-        case ReduceOp.PROD:
-            return acc * curr
-        case ReduceOp.MIN:
-            return min(acc, curr)
-        case ReduceOp.MAX:
-            return max(acc, curr)
-        case _:
-            raise TypeError(f"unknown reduce op: {op!r}")
+    try:
+        return _REDUCERS[op](acc, curr)
+    except TypeError as exc:
+        raise FlockUsageError(
+            f"all_reduce could not combine {acc!r} and {curr!r} with op {op.value!r}; "
+            "the values must support that reduction."
+        ) from exc

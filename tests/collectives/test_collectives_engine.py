@@ -4,7 +4,7 @@ import flock
 from flock import FlockCollectiveMismatch
 from flock.collectives.ops import AllReduce, Barrier
 from flock.context import make_context
-from flock.scheduler import CooperativeScheduler, Fifo, Worker, active_runtime
+from flock.scheduler import CooperativeScheduler, Fifo, Worker
 from flock.types import WORLD, Rank
 
 
@@ -14,12 +14,7 @@ def _register(
     collective: Barrier | AllReduce,
 ) -> None:
     worker = scheduler.workers[rank]
-
-    def register() -> None:
-        with active_runtime(scheduler.runtime):
-            scheduler.runtime.collectives.begin(WORLD, collective)
-
-    worker.context.run(register)
+    worker.context.run(scheduler.runtime.collectives.begin, WORLD, collective)
 
 
 def test_collective_kind_mismatch():

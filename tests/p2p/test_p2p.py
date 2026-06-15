@@ -138,6 +138,25 @@ def test_p2p_invalid_peer_raises(peer):
         run()
 
 
+def test_isend_to_self():
+    @flock.distribute(workers=1)
+    async def run():
+        await flock.isend(0, "self").wait()
+        return await flock.recv(0)
+
+    assert run() == ["self"]
+
+
+def test_blocking_send_to_self_deadlocks():
+    @flock.distribute(workers=1)
+    async def run():
+        await flock.send(0, "self")
+        return await flock.recv(0)
+
+    with pytest.raises(FlockDeadlockError):
+        run()
+
+
 def test_double_wait_raises():
     @flock.distribute(workers=2, seed=0)
     async def run():

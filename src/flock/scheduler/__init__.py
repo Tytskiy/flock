@@ -1,7 +1,7 @@
 from flock.scheduler.cooperative import CooperativeScheduler
 from flock.scheduler.port import SchedulePort
 from flock.scheduler.protocol import Fifo, Policy, Random, Scheduler, Worker
-from flock.scheduler.runtime import Runtime, active_runtime, require_runtime
+from flock.scheduler.runtime import Runtime, activate, require_runtime
 
 __all__ = [
     "Scheduler",
@@ -13,5 +13,5 @@ __all__ = [
     "SchedulePort",
     "Runtime",
     "require_runtime",
-    "active_runtime",
+    "activate",
 ]

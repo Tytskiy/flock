@@ -37,7 +37,7 @@ runtime when you call them. Complete them with `await work.wait()`.
 
 Blocking sugar: `await flock.send(...)` and `await flock.recv(...)` for simple
 programs. Overlap communication with computation via `isend` / `irecv` / collectives
-and `.wait()`.
+and `.wait()`. Poll without blocking using `work.is_completed()`.
 
 ## Development
 

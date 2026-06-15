@@ -9,7 +9,7 @@ from flock.errors import FlockDeadlockError, FlockUsageError
 from flock.p2p.engine import P2PEngine
 from flock.scheduler.port import SchedulePort
 from flock.scheduler.protocol import Fifo, Policy, Random, Worker
-from flock.scheduler.runtime import Runtime, active_runtime
+from flock.scheduler.runtime import Runtime, activate
 from flock.types import Rank
 
 
@@ -54,6 +54,8 @@ class CooperativeScheduler[R]:
             p2p=P2PEngine(port),
             collectives=CollectiveEngine(port, world_size=self.world_size),
         )
+        for worker in self.workers:
+            worker.context.run(activate, self.runtime)
 
     def run(self) -> list[R]:
         while self.runnable:
@@ -71,22 +73,18 @@ class CooperativeScheduler[R]:
 
     def _blocking_report(self) -> str:
         lines = ["deadlock: no rank can make progress."]
-        lines.extend(self.runtime.p2p.deadlock_lines())
-        lines.extend(self.runtime.collectives.deadlock_lines())
 
         if self.seed is not None:
             lines.append(f"(reproduce this ordering with Random(seed={self.seed}))")
+
+        lines.extend(self.runtime.p2p.deadlock_lines())
+        lines.extend(self.runtime.collectives.deadlock_lines())
 
         return "\n".join(lines)
 
     def _resume(self, rank: Rank, value: Any) -> Any:
         worker = self.workers[rank]
-
-        def run_with_runtime() -> Any:
-            with active_runtime(self.runtime):
-                return worker.coro.send(value)
-
-        return worker.context.run(run_with_runtime)
+        return worker.context.run(worker.coro.send, value)
 
     def _tick(self) -> None:
         rank, resume_value = self._pick()

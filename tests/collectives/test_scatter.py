@@ -74,6 +74,21 @@ def test_scatter_wrong_length_raises():
         run()
 
 
+def test_scatter_src_not_in_group_raises():
+    group = new_group([0, 1])
+
+    @flock.distribute(workers=3)
+    async def run():
+        rank = flock.get_rank()
+        if rank not in group:
+            return None
+        await flock.scatter(None, src=2, group=group).wait()
+        return "done"
+
+    with pytest.raises(FlockUsageError, match="not in the group"):
+        run()
+
+
 def test_scatter_outside_distribute_raises():
     with pytest.raises(FlockUsageError, match="wrong place"):
         flock.scatter([0], src=0)

@@ -98,24 +98,19 @@ class P2PEngine:
                 self._port.resume(rank, message.value)
 
     def deadlock_lines(self) -> list[str]:
-        lines: list[str] = []
+        return [
+            f"rank {rank} is blocked in {handle.kind} waiting for rank {handle.peer}"
+            for rank, handle in sorted(self.blocked.items())
+        ]
 
-        seen_send: set[Rank] = set()
-
-        for rank, handle in sorted(self.blocked.items()):
-            lines.append(f"rank {rank} is blocked in {handle.kind} waiting for rank {handle.peer}")
-            if handle.kind == "send":
-                seen_send.add(rank)
-
-        for dst, by_src in sorted(self.mailboxes.items()):
-            for mailbox in by_src.values():
-                for message in mailbox:
-                    if message.ack and message.send_id is not None:
-                        request = self.requests.get(message.send_id)
-                        if request is not None and not request.done and message.src is not seen_send:
-                            lines.append(f"rank {message.src} is blocked in send waiting for rank {dst}")
-
-        return lines
+    def is_complete(self, handle: P2PHandle) -> bool:
+        request = self.requests.get(handle.request_id)
+        if request is None:
+            return True
+        if handle.kind in ("isend", "send"):
+            return request.done
+        by_src = self.mailboxes.get(handle.rank)
+        return bool(by_src and by_src.get(handle.peer))
 
     def _new_handle(self, kind: str, rank: Rank, peer: Rank) -> P2PHandle:
         request_id = self._request_counter

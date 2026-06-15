@@ -1,7 +1,5 @@
 import contextvars
 from collections import defaultdict
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from flock.collectives.engine import CollectiveEngine
@@ -86,6 +84,15 @@ class Runtime:
             case _:
                 raise TypeError(f"unknown handle: {handle!r}")
 
+    def is_complete(self, handle: object) -> bool:
+        match handle:
+            case P2PHandle() as p2p_handle:
+                return self.p2p.is_complete(p2p_handle)
+            case CollectiveHandle() as collective_handle:
+                return self.collectives.is_complete(collective_handle)
+            case _:
+                raise TypeError(f"unknown handle: {handle!r}")
+
 
 _active: contextvars.ContextVar[Runtime | None] = contextvars.ContextVar(
     "flock_active_runtime",
@@ -106,10 +113,5 @@ def require_runtime() -> Runtime:
     return runtime
 
 
-@contextmanager
-def active_runtime(runtime: Runtime) -> Iterator[None]:
-    token = _active.set(runtime)
-    try:
-        yield
-    finally:
-        _active.reset(token)
+def activate(runtime: Runtime) -> None:
+    _active.set(runtime)

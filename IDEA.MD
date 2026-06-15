@@ -52,6 +52,12 @@ result = await work.wait()
 Every started operation must be awaited (via `.wait()` or blocking `send`/`recv`)
 before a rank returns. Unawaited ops raise `FlockUsageError`.
 
+`work.is_completed()` is a non-blocking poll: it returns `True` when `await
+work.wait()` would resume the rank without blocking — i.e. the message has
+arrived, the send has been received, or every other group member is already
+waiting on the collective. Use it to decide whether to keep overlapping local
+work or to wait now.
+
 Collectives also advance their per-rank sequence counter on call, not on wait.
 Calling `flock.barrier()` without awaiting consumes a collective slot.
 
@@ -66,7 +72,7 @@ src/flock/
   decorator.py          # @distribute
   errors.py             # FlockError, FlockDeadlockError, FlockUsageError, ...
   types.py              # Rank, Group, new_group(), WORLD
-  wait.py               # Work, shared wait machinery
+  work.py               # Work, shared wait machinery
   __init__.py           # re-exports
 ```
 
@@ -85,6 +91,10 @@ src/flock/
 `recv` and `send` are `async def` sugar for simple programs. Use `irecv` /
 `isend` when you need to post receives or sends before awaiting them.
 
+A rank may target itself. `isend(rank, v)` buffers into the rank's own mailbox,
+so a later `recv(rank)` succeeds. Blocking `send(rank, v)` to yourself deadlocks:
+the rank suspends waiting to be received by code it can never reach.
+
 ### Collectives
 
 All return `Work[...]`; complete with `await work.wait()`. Like p2p ops, they
@@ -102,12 +112,14 @@ ranks. Mismatched collective kinds at the same site raise `FlockCollectiveMismat
 
 ### Scheduling policies
 
-`@flock.distribute` uses `Random(seed=...)`:
+`@flock.distribute` uses `Random(seed=...)` by default:
 
 - `seed=0` (default) — deterministic ordering
 - `seed=None` — fresh seed each run, for fuzzing
 
-`Fifo()` exists internally for tests but is not selectable from `@distribute` yet.
+Pass `policy=` to choose another policy, e.g. `@flock.distribute(workers=4,
+policy=flock.Fifo())` for a deterministic round-robin order. An explicit `policy`
+overrides `seed`.
 
 ### Deadlock detection
 
@@ -128,6 +140,5 @@ exact interleaving.
 
 - Ring / tree algorithm implementations (educational)
 - Trace / debug mode (log which rank ran which op)
-- `Fifo` policy exposed on `@distribute`
 - Process backend (real isolation, closer to torchrun)
 - Socket backend (real networking)

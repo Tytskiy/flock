@@ -8,16 +8,19 @@ from flock.work import Work
 
 
 def barrier(group: Group = WORLD) -> Work[None]:
-    return Work(require_runtime().begin_collective(group, Barrier()))
+    runtime = require_runtime()
+    return Work(runtime.begin_collective(group, Barrier()), runtime)
 
 
 def all_gather[T](value: T, group: Group = WORLD) -> Work[list[T]]:
-    return Work(require_runtime().begin_collective(group, AllGather(value=value)))
+    runtime = require_runtime()
+    return Work(runtime.begin_collective(group, AllGather(value=value)), runtime)
 
 
 def all_reduce[T](value: T, op: ReduceOp | str, group: Group = WORLD) -> Work[T]:
     op = ReduceOp(op)
-    return Work(require_runtime().begin_collective(group, AllReduce(value=value, op=op)))
+    runtime = require_runtime()
+    return Work(runtime.begin_collective(group, AllReduce(value=value, op=op)), runtime)
 
 
 def scatter(
@@ -25,4 +28,5 @@ def scatter(
     src: Rank = 0,
     group: Group = WORLD,
 ) -> Work[Any]:
-    return Work(require_runtime().begin_collective(group, Scatter(values=values, src=src)))
+    runtime = require_runtime()
+    return Work(runtime.begin_collective(group, Scatter(values=values, src=src)), runtime)

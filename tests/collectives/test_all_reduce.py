@@ -47,6 +47,16 @@ def test_all_reduce_op_mismatch():
         run()
 
 
+def test_all_reduce_incompatible_values_raises():
+    @flock.distribute(workers=2)
+    async def run():
+        value = 1 if flock.get_rank() == 0 else "x"
+        return await flock.all_reduce(value, "sum").wait()
+
+    with pytest.raises(FlockUsageError, match="could not combine"):
+        run()
+
+
 def test_all_reduce_outside_distribute_raises():
     with pytest.raises(FlockUsageError, match="wrong place"):
         flock.all_reduce(0, "sum")

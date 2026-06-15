@@ -5,12 +5,13 @@ from typing import Any
 
 from flock.context import make_context
 from flock.errors import FlockUsageError
-from flock.scheduler import CooperativeScheduler, Random, Worker
+from flock.scheduler import CooperativeScheduler, Policy, Random, Worker
 
 
 def distribute[R](
     workers: int,
     seed: int | None = 0,
+    policy: Policy | None = None,
 ) -> Callable[[Callable[..., Coroutine[Any, Any, R]]], Callable[..., list[R]]]:
     if callable(workers):
         raise FlockUsageError(
@@ -23,6 +24,13 @@ def distribute[R](
 
     if not isinstance(workers, int) or workers < 1:
         raise FlockUsageError(f"workers must be a whole number greater than 0, but you gave {workers!r}.")
+
+    if policy is not None and not isinstance(policy, Policy):
+        raise FlockUsageError(
+            f"policy must be a scheduling policy like Random() or Fifo(), but you gave {policy!r}."
+        )
+
+    chosen = policy if policy is not None else Random(seed=seed)
 
     def decorator(fn: Callable[..., Coroutine[Any, Any, R]]) -> Callable[..., list[R]]:
         if inspect.isasyncgenfunction(fn):
@@ -52,7 +60,7 @@ def distribute[R](
                 for rank in range(workers)
             ]
             try:
-                return CooperativeScheduler(spawned, policy=Random(seed=seed)).run()
+                return CooperativeScheduler(spawned, policy=chosen).run()
             except BaseException:
                 for worker in spawned:
                     worker.coro.close()

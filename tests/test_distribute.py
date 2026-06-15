@@ -26,6 +26,25 @@ def test_distribute_with_explicit_seed():
     assert run() == [(r - 1) % world for r in range(world)]
 
 
+def test_distribute_with_fifo_policy():
+    world = 3
+
+    @flock.distribute(workers=world, policy=flock.Fifo())
+    async def run():
+        await flock.barrier().wait()
+        return flock.get_rank()
+
+    assert run() == [0, 1, 2]
+
+
+def test_distribute_rejects_bad_policy():
+    with pytest.raises(FlockUsageError, match="policy must be"):
+
+        @flock.distribute(workers=2, policy="fifo")
+        async def run():
+            return flock.get_rank()
+
+
 def test_distribute_requires_async():
     with pytest.raises(FlockUsageError, match="async"):
 

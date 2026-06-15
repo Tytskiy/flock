@@ -44,7 +44,7 @@ class CollectiveEngine:
                 f"but other ranks in the group already started {slot.state.kind!r} there."
             )
 
-        call.enter(slot.state, rank)
+        call.enter(slot.state, rank, members)
         slot.arrived.add(rank)
         self.counters[(rank, members)] += 1
         request_id = self._request_counter
@@ -82,6 +82,13 @@ class CollectiveEngine:
             return
 
         self.blocked[rank] = handle
+
+    def is_complete(self, handle: CollectiveHandle) -> bool:
+        slot = self.slots.get((handle.group, handle.index))
+        if slot is None:
+            return True
+        members = set(slot.members)
+        return slot.arrived == members and slot.waiting == members - {handle.rank}
 
     def deadlock_lines(self) -> list[str]:
         lines: list[str] = []
