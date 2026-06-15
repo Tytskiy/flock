@@ -7,13 +7,14 @@ from flock.errors import FlockUsageError
 from flock.p2p.handle import P2PHandle
 from flock.p2p.ops import Irecv, Isend, P2PCall, Recv, Send
 from flock.scheduler.port import SchedulePort
-from flock.types import Rank, RequestId
+from flock.types import ANY_SOURCE, ANY_TAG, Rank, RequestId
 
 
 @dataclass
 class Message:
     src: Rank
     value: Any
+    tag: int = 0
     ack: bool = False
     send_id: int | None = None
 
@@ -27,36 +28,24 @@ class P2PRequest:
 class P2PEngine:
     def __init__(self, port: SchedulePort) -> None:
         self._port = port
-        self.suspended: dict[Rank, Rank] = {}
-        self.mailboxes: defaultdict[Rank, defaultdict[Rank, deque[Message]]] = defaultdict(
-            lambda: defaultdict(deque)
-        )
+        self.mailboxes: defaultdict[Rank, deque[Message]] = defaultdict(deque)
         self.requests: dict[RequestId, P2PRequest] = {}
         self.blocked: dict[Rank, P2PHandle] = {}
         self._request_counter = 0
 
     def begin(self, call: P2PCall) -> P2PHandle:
         rank = get_current_rank()
-        self._validate_peer(call.peer)
-        handle = self._new_handle(call.kind, rank, call.peer)
+        self._validate_peer(call)
+        handle = self._new_handle(call.kind, rank, call.peer, call.tag)
 
         match call:
             case Isend(value=value):
-                self._deliver(rank, call.peer, value, ack=False)
+                self._deliver(rank, call.peer, value, call.tag, ack=False)
                 self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
 
             case Send(value=value):
-                if self.suspended.get(call.peer) == rank:
-                    del self.suspended[call.peer]
-                    recv_handle = self.blocked.pop(call.peer)
-                    self.requests.pop(recv_handle.request_id)
-                    self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
-                    self._port.resume(call.peer, value)
-                else:
-                    self.requests[handle.request_id] = P2PRequest(handle=handle)
-                    self.mailboxes[call.peer][rank].append(
-                        Message(src=rank, value=value, ack=True, send_id=handle.request_id)
-                    )
+                self.requests[handle.request_id] = P2PRequest(handle=handle)
+                self._deliver(rank, call.peer, value, call.tag, ack=True, send_id=handle.request_id)
 
             case Recv() | Irecv():
                 self.requests[handle.request_id] = P2PRequest(handle=handle)
@@ -86,9 +75,8 @@ class P2PEngine:
                     self.blocked[rank] = handle
 
             case "recv" | "irecv":
-                message = self._take_message(rank, handle.peer)
+                message = self._take_message(rank, handle)
                 if message is None:
-                    self.suspended[rank] = handle.peer
                     self.blocked[rank] = handle
                     return
 
@@ -98,10 +86,11 @@ class P2PEngine:
                 self._port.resume(rank, message.value)
 
     def deadlock_lines(self) -> list[str]:
-        return [
-            f"rank {rank} is blocked in {handle.kind} waiting for rank {handle.peer}"
-            for rank, handle in sorted(self.blocked.items())
-        ]
+        lines = []
+        for rank, handle in sorted(self.blocked.items()):
+            peer = "any source" if handle.peer == ANY_SOURCE else f"rank {handle.peer}"
+            lines.append(f"rank {rank} is blocked in {handle.kind} waiting for {peer}")
+        return lines
 
     def is_complete(self, handle: P2PHandle) -> bool:
         request = self.requests.get(handle.request_id)
@@ -109,34 +98,61 @@ class P2PEngine:
             return True
         if handle.kind in ("isend", "send"):
             return request.done
-        by_src = self.mailboxes.get(handle.rank)
-        return bool(by_src and by_src.get(handle.peer))
+        mailbox = self.mailboxes.get(handle.rank)
+        if not mailbox:
+            return False
+        return any(self._matches(handle, message) for message in mailbox)
 
-    def _new_handle(self, kind: str, rank: Rank, peer: Rank) -> P2PHandle:
+    def _new_handle(self, kind: str, rank: Rank, peer: Rank, tag: int) -> P2PHandle:
         request_id = self._request_counter
         self._request_counter += 1
-        return P2PHandle(kind=kind, rank=rank, peer=peer, request_id=request_id)
+        return P2PHandle(kind=kind, rank=rank, peer=peer, tag=tag, request_id=request_id)
 
-    def _validate_peer(self, peer: Rank) -> None:
+    def _validate_peer(self, call: P2PCall) -> None:
+        peer = call.peer
+        if call.kind in ("recv", "irecv") and peer == ANY_SOURCE:
+            return
         world_size = self._port.world_size
         if peer < 0 or peer >= world_size:
             raise FlockUsageError(f"rank {peer} is out of range for world_size={world_size}.")
 
-    def _deliver(self, src: Rank, dst: Rank, value: Any, *, ack: bool, send_id: int | None = None) -> None:
-        if self.suspended.get(dst) == src:
-            del self.suspended[dst]
-            recv_handle = self.blocked.pop(dst)
-            self.requests.pop(recv_handle.request_id)
+    def _deliver(
+        self, src: Rank, dst: Rank, value: Any, tag: int, *, ack: bool, send_id: int | None = None
+    ) -> None:
+        receiver = self._waiting_recv(dst, src, tag)
+        if receiver is not None:
+            del self.blocked[dst]
+            self.requests.pop(receiver.request_id)
+            if ack and send_id is not None:
+                self._complete_send(send_id)
             self._port.resume(dst, value)
             return
 
-        self.mailboxes[dst][src].append(Message(src=src, value=value, ack=ack, send_id=send_id))
+        self.mailboxes[dst].append(Message(src=src, value=value, tag=tag, ack=ack, send_id=send_id))
 
-    def _take_message(self, dst: Rank, src: Rank) -> Message | None:
-        mailbox = self.mailboxes[dst].get(src)
+    def _waiting_recv(self, dst: Rank, src: Rank, tag: int) -> P2PHandle | None:
+        handle = self.blocked.get(dst)
+        if handle is None or handle.kind not in ("recv", "irecv"):
+            return None
+        if self._matches(handle, Message(src=src, value=None, tag=tag)):
+            return handle
+        return None
+
+    def _take_message(self, dst: Rank, handle: P2PHandle) -> Message | None:
+        mailbox = self.mailboxes.get(dst)
         if not mailbox:
             return None
-        return mailbox.popleft()
+        for index, message in enumerate(mailbox):
+            if self._matches(handle, message):
+                del mailbox[index]
+                return message
+        return None
+
+    @staticmethod
+    def _matches(handle: P2PHandle, message: Message) -> bool:
+        src_ok = handle.peer == ANY_SOURCE or handle.peer == message.src
+        tag_ok = handle.tag == ANY_TAG or handle.tag == message.tag
+        return src_ok and tag_ok
 
     def _complete_send(self, send_id: int) -> None:
         request = self.requests.get(send_id)

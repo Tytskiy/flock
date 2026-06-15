@@ -17,7 +17,7 @@ from .decorator import distribute
 from .errors import FlockCollectiveMismatch, FlockDeadlockError, FlockError, FlockUsageError
 from .p2p import irecv, isend, recv, send
 from .scheduler import Fifo, Random
-from .types import new_group
+from .types import ANY_SOURCE, ANY_TAG, new_group
 from .work import Work
 
 __all__ = [
@@ -28,6 +28,8 @@ __all__ = [
     "irecv",
     "send",
     "recv",
+    "ANY_SOURCE",
+    "ANY_TAG",
     "Work",
     "all_gather",
     "all_reduce",

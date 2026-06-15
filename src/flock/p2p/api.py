@@ -6,23 +6,23 @@ from flock.types import Rank
 from flock.work import Work
 
 
-def isend[T](dst: Rank, value: T) -> Work[None]:
+def isend[T](dst: Rank, value: T, tag: int = 0) -> Work[None]:
     runtime = require_runtime()
-    return Work(runtime.begin_p2p(Isend(dst, value)), runtime)
+    return Work(runtime.begin_p2p(Isend(dst, value, tag)), runtime)
 
 
-def irecv(src: Rank) -> Work[Any]:
+def irecv(src: Rank, tag: int = 0) -> Work[Any]:
     runtime = require_runtime()
-    return Work(runtime.begin_p2p(Irecv(src)), runtime)
+    return Work(runtime.begin_p2p(Irecv(src, tag)), runtime)
 
 
-async def send[T](dst: Rank, value: T) -> None:
+async def send[T](dst: Rank, value: T, tag: int = 0) -> None:
     runtime = require_runtime()
-    handle = runtime.begin_p2p(Send(dst, value))
+    handle = runtime.begin_p2p(Send(dst, value, tag))
     await Work(handle, runtime).wait()
 
 
-async def recv(src: Rank) -> Any:
+async def recv(src: Rank, tag: int = 0) -> Any:
     runtime = require_runtime()
-    handle = runtime.begin_p2p(Recv(src))
+    handle = runtime.begin_p2p(Recv(src, tag))
     return await Work(handle, runtime).wait()

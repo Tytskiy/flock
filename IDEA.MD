@@ -71,7 +71,7 @@ src/flock/
   context.py            # per-rank contextvars: get_rank(), get_world_size()
   decorator.py          # @distribute
   errors.py             # FlockError, FlockDeadlockError, FlockUsageError, ...
-  types.py              # Rank, Group, new_group(), WORLD
+  types.py              # Rank, Group, new_group(), WORLD, ANY_SOURCE, ANY_TAG
   work.py               # Work, shared wait machinery
   __init__.py           # re-exports
 ```
@@ -95,6 +95,20 @@ A rank may target itself. `isend(rank, v)` buffers into the rank's own mailbox,
 so a later `recv(rank)` succeeds. Blocking `send(rank, v)` to yourself deadlocks:
 the rank suspends waiting to be received by code it can never reach.
 
+`isend` buffers eagerly with **no bound**: a rank can post unlimited unreceived
+sends, and they never block on buffer space. This is a deliberate simplification —
+real transports (NCCL/MPI) have eager/rendezvous thresholds and finite buffers, so
+backpressure and flow control are intentionally out of scope.
+
+#### Tags and ANY_SOURCE
+
+Every p2p call takes an optional `tag` (default `0`); a `recv` only matches a
+message with the same `(src, tag)`. Pass `flock.ANY_SOURCE` as the source or
+`flock.ANY_TAG` as the tag to match any sender / any tag — useful for ring CP and
+pipeline activation passing where the partner or message ordering isn't fixed.
+Matching is non-overtaking per `(src, tag)`: messages in the same stream are
+received in send order, but a later `recv` may pick a different tag out of order.
+
 ### Collectives
 
 All return `Work[...]`; complete with `await work.wait()`. Like p2p ops, they
@@ -113,8 +127,7 @@ register on call, so you can start one and overlap the wait with local work.
 | `all_to_all(values)` | `list[T]` |
 
 `op` accepts a named op (`"sum"`, `ReduceOp.PROD`, …) or any binary callable
-`(a, b) -> c` — e.g. `torch.minimum` for tensor reductions, keeping the core
-torch-free.
+`(a, b) -> c` — e.g. `torch.minimum` for tensor reductions.
 
 Groups: `flock.new_group([0, 2])` or omit `group` / pass `flock.WORLD` for all
 ranks. Mismatched collective kinds at the same site raise `FlockCollectiveMismatch`.
@@ -124,7 +137,7 @@ ranks. Mismatched collective kinds at the same site raise `FlockCollectiveMismat
 `@flock.distribute` uses `Random(seed=...)` by default:
 
 - `seed=0` (default) — deterministic ordering
-- `seed=None` — fresh seed each run, for fuzzing
+- `seed=None` — fresh seed each run
 
 Pass `policy=` to choose another policy, e.g. `@flock.distribute(workers=4,
 policy=flock.Fifo())` for a deterministic round-robin order. An explicit `policy`
@@ -155,6 +168,25 @@ hangs, and overlap that real frameworks hide.
   and does not import torch. Torch is a *course/puzzle* dependency group; the engine
   treats a tensor as any other value.
 
+### What flock provides vs. what students build
+
+flock is the *substrate*: only the primitives that need scheduler/engine support
+and can't be built from outside. Everything expressible in terms of them is a
+puzzle, not a library feature.
+
+- **flock provides:** p2p (`send`/`recv`/`isend`/`irecv`), the built-in
+  collectives, the cooperative scheduler, deadlock/usage diagnostics, deterministic
+  seeds, `Group`/`new_group`, `tag` / `ANY_SOURCE` / `ANY_TAG` matching, and the
+  per-rank context (`rank`, `world_size`). Still to add: the trace/cost model.
+- **Students build (the puzzles):** `DeviceMesh` (an n-d reshape of the world over
+  `new_group`), `Placements` (`Shard`/`Replicate`/`Partial`), `DTensor` +
+  `redistribute` (each placement change is a collective), and the parallelisms
+  (DDP, FSDP, TP, CP, EP, PP).
+
+The point is pedagogical: shipping `DeviceMesh` or `redistribute` would hand
+students the punchline. flock stays minimal so the high-level structure is theirs
+to discover.
+
 ### Two ideas the whole course is built around
 
 1. **Collectives are p2p algorithms.** Implement `all_reduce` (ring vs recursive
@@ -180,14 +212,18 @@ hangs, and overlap that real frameworks hide.
 4. **Model parallelisms** — FSDP, TP, CP, EP, PP, and a 2D/3D composition capstone
    (TP × DP × PP) — the real DeviceMesh payoff.
 
-### Library prerequisites (by tier)
+### What each tier needs from flock
 
-- Tier 1: `broadcast`, `reduce`, `gather`, `reduce_scatter`, `all_to_all`; a
-  trace/cost model (messages, rounds, bytes).
-- Tier 2: `DeviceMesh`, `Shard`/`Replicate`/`Partial`, `redistribute`.
-- Tier 3–4: nothing new in the engine for PP (it's p2p of activations — best
-  showcase for visualizing GPipe vs 1F1B bubbles); CP wants ring p2p + online
-  softmax; EP wants `all_to_all`. `tag` / ANY_SOURCE `recv` become useful here.
+Most tiers need *nothing new* — they're built on the existing primitives. flock's
+own remaining work is small.
+
+- Tier 1: full collective set (done) + a trace/cost model (messages, rounds, bytes)
+  to compare hand-rolled algorithms.
+- Tier 2: nothing new — `DeviceMesh`/`Placements`/`redistribute` are student work
+  over `new_group` and the collectives.
+- Tier 3–4: nothing new — `tag` / `ANY_SOURCE` `recv` (available) cover ring CP and
+  PP activation passing. PP is p2p of activations (best showcase for visualizing
+  GPipe vs 1F1B bubbles); EP is `all_to_all`.
 
 ### Topics not to forget
 
@@ -200,5 +236,4 @@ hangs, and overlap that real frameworks hide.
 ### Engine roadmap
 
 - Trace / debug mode (log which rank ran which op; communication volume).
-- `tag` and ANY_SOURCE `recv`.
 - Process / socket backends (real isolation, closer to torchrun).

@@ -157,6 +157,58 @@ def test_blocking_send_to_self_deadlocks():
         run()
 
 
+def test_recv_selects_by_tag():
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.isend(1, "a", tag=1).wait()
+            await flock.isend(1, "b", tag=2).wait()
+            return None
+        second = await flock.recv(0, tag=2)
+        first = await flock.recv(0, tag=1)
+        return (first, second)
+
+    assert run()[1] == ("a", "b")
+
+
+def test_recv_any_tag_matches_any():
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.isend(1, "x", tag=7).wait()
+            return None
+        return await flock.recv(0, tag=flock.ANY_TAG)
+
+    assert run()[1] == "x"
+
+
+def test_tag_mismatch_deadlocks():
+    @flock.distribute(workers=2, seed=0)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.isend(1, "x", tag=1).wait()
+            return None
+        return await flock.recv(0, tag=2)
+
+    with pytest.raises(FlockDeadlockError):
+        run()
+
+
+def test_recv_any_source_gathers_all():
+    world = 3
+
+    @flock.distribute(workers=world, seed=0)
+    async def run():
+        rank = flock.get_rank()
+        if rank != 0:
+            await flock.isend(0, rank).wait()
+            return None
+        received = [await flock.recv(flock.ANY_SOURCE) for _ in range(world - 1)]
+        return sorted(received)
+
+    assert run()[0] == [1, 2]
+
+
 def test_double_wait_raises():
     @flock.distribute(workers=2, seed=0)
     async def run():

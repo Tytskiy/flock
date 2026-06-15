@@ -10,6 +10,9 @@ Rank = int
 
 RequestId = int
 
+ANY_SOURCE: Rank = -1
+ANY_TAG: int = -1
+
 _WORLD_ID = 0
 _group_ids = itertools.count(_WORLD_ID + 1)
 
