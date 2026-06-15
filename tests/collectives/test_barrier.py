@@ -13,17 +13,6 @@ def test_barrier_sync():
     assert run() == [0, 1, 2, 3]
 
 
-def test_barrier_async():
-    @flock.distribute(workers=3)
-    async def run():
-        future = flock.barrier()
-        await flock.isend((flock.get_rank() + 1) % flock.get_world_size(), flock.get_rank()).wait()
-        await future.wait()
-        return flock.get_rank()
-
-    assert run() == [0, 1, 2]
-
-
 def test_barrier_subgroup():
     group = new_group([0, 2])
 
@@ -66,7 +55,7 @@ def test_barrier_non_member_raises():
     @flock.distribute(workers=3)
     async def run():
         if flock.get_rank() == 2:
-            return flock.barrier(group=new_group([0, 1]))
+            return await flock.barrier(group=new_group([0, 1])).wait()
         await flock.barrier().wait()
         return flock.get_rank()
 

@@ -87,7 +87,8 @@ src/flock/
 
 ### Collectives
 
-All return `Work[...]`; complete with `await work.wait()`.
+All return `Work[...]`; complete with `await work.wait()`. Like p2p ops, they
+register on call, so you can start one and overlap the wait with local work.
 
 | API | Result type |
 |-----|-------------|

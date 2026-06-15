@@ -6,7 +6,7 @@ from flock.collectives.ops import CollectiveCall, CollectiveState
 from flock.context import get_rank as get_current_rank
 from flock.errors import FlockCollectiveMismatch, FlockUsageError
 from flock.scheduler.port import SchedulePort
-from flock.types import Group, Rank, _default_world_group, _World
+from flock.types import WORLD, Group, Rank, _default_world_group
 
 
 @dataclass
@@ -100,7 +100,7 @@ class CollectiveEngine:
                 )
 
             registered = slot.arrived - slot.waiting
-            if slot.arrived == slot.members and registered:
+            if slot.arrived == set(slot.members) and registered:
                 lines.append(
                     f"ranks {sorted(registered)} entered collective #{index} ({slot.state.kind}) "
                     "but have not awaited yet"
@@ -109,7 +109,7 @@ class CollectiveEngine:
         return lines
 
     def _resolve_group(self, group: Group, rank: Rank) -> Group:
-        members = _default_world_group(self._world_size) if group is _World() else group
+        members = _default_world_group(self._world_size) if group is WORLD else group
 
         if not members:
             raise FlockUsageError("a group must contain at least one rank.")

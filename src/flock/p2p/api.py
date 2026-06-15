@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 from flock.p2p.ops import Irecv, Isend, Recv, Send
 from flock.scheduler.runtime import require_runtime
@@ -19,6 +19,6 @@ async def send[T](dst: Rank, value: T) -> None:
     await Work(handle).wait()
 
 
-async def recv[T](src: Rank) -> T:
+async def recv(src: Rank) -> Any:
     handle = require_runtime().begin_p2p(Recv(src))
-    return cast(T, await Work(handle).wait())
+    return await Work(handle).wait()

@@ -127,7 +127,7 @@ class AllReduceState:
     value: Any | None = None
 
     def complete(self, members: Group, rank: Rank) -> Any:
-        return self.value
+        return copy.deepcopy(self.value)
 
 
 @dataclass
@@ -145,7 +145,7 @@ class ScatterState:
             raise FlockUsageError(
                 f"scatter src provided {len(self.values)} values, but the group has {len(members)} members."
             )
-        return self.values[members.index(rank)]
+        return copy.deepcopy(self.values[members.index(rank)])
 
 
 def reduce_value(op: ReduceOp, acc: Any | None, curr: Any) -> Any:
