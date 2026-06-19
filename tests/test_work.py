@@ -1,3 +1,5 @@
+import pytest
+
 import flock
 from flock.scheduler import Fifo
 
@@ -48,3 +50,53 @@ def test_collective_is_completed_for_last_waiter(run_scheduler):
     results = run_scheduler([worker(0), worker(1)], 2, policy=Fifo())
     assert polled == [True]
     assert results == [[0, 1], [0, 1]]
+
+
+def test_irecv_expected_type_passes():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.send(1, "hi")
+            return None
+
+        return await flock.irecv(0, expected_type=str).wait()
+
+    assert run()[1] == "hi"
+
+
+def test_irecv_expected_type_rejects_mismatch():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.send(1, 1)
+            return None
+
+        return await flock.irecv(0, expected_type=str).wait()
+
+    with pytest.raises(TypeError, match="expected str, got int"):
+        run()
+
+
+def test_recv_expected_type_passes():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.send(1, "hi")
+            return None
+
+        return await flock.recv(0, expected_type=str)
+
+    assert run()[1] == "hi"
+
+
+def test_recv_expected_type_rejects_mismatch():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.send(1, 1)
+            return None
+
+        return await flock.recv(0, expected_type=str)
+
+    with pytest.raises(TypeError, match="expected str, got int"):
+        run()

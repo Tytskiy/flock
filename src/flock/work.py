@@ -14,20 +14,32 @@ Handle = P2PHandle | CollectiveHandle
 
 
 class _Wait[T]:
-    def __init__(self, handle: Handle) -> None:
+    def __init__(self, handle: Handle, expected_type: type[T] | None) -> None:
         self._handle = handle
+        self._expected_type = expected_type
 
     def __await__(self) -> Generator[Handle, Any, T]:
-        return (yield self._handle)
+        value = yield self._handle
+        if self._expected_type is not None and not isinstance(value, self._expected_type):
+            msg = f"expected {self._expected_type.__name__}, got {type(value).__name__}"
+            raise TypeError(msg)
+        return value
 
 
 class Work[T]:
-    def __init__(self, handle: Handle, runtime: Runtime) -> None:
+    def __init__(
+        self,
+        handle: Handle,
+        runtime: Runtime,
+        *,
+        expected_type: type[T] | None = None,
+    ) -> None:
         self._handle = handle
         self._runtime = runtime
+        self._expected_type = expected_type
 
     def wait(self) -> _Wait[T]:
-        return _Wait(self._handle)
+        return _Wait(self._handle, self._expected_type)
 
     def is_completed(self) -> bool:
         return self._runtime.is_complete(self._handle)

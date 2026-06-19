@@ -44,6 +44,9 @@ async def _p2p() -> None:
 
     assert_type(flock.irecv(0), flock.Work[Any])
     assert_type(await flock.irecv(0).wait(), Any)
+    assert_type(flock.irecv(0, expected_type=str), flock.Work[str])
+    assert_type(await flock.irecv(0, expected_type=str).wait(), str)
 
     assert_type(await flock.send(0, "x"), None)
+    assert_type(await flock.recv(0, expected_type=str), str)
     assert_type(await _recv_int(0), int)
