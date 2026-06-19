@@ -49,4 +49,5 @@ just fix     # auto-format
 
 ## More detail
 
-See [IDEA.MD](IDEA.MD) for architecture, scheduling, deadlock diagnostics, and roadmap.
+See [IDEA.MD](IDEA.MD) for architecture, scheduling, and deadlock diagnostics.
+Course content lives in the sibling [dist-puzzles](../dist-puzzles) project.

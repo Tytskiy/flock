@@ -151,87 +151,12 @@ reports which ranks are stuck and why. Unawaited operations are listed first
 details. If a random seed was used, it's included so you can reproduce the
 exact interleaving.
 
-## Vision: a distributed-training course
+## Vision
 
-flock is the runtime under a "build distributed training from scratch" course, in
-the spirit of the Tensor / GPU / Triton Puzzles: each puzzle is a spec + expected
-output + a body to fill, graded automatically. The deterministic scheduler and
-deadlock diagnostics are the teaching superpower — students *see* interleavings,
-hangs, and overlap that real frameworks hide.
-
-### Substrate decisions
-
-- **Tensors & autograd: real (CPU) `torch`.** Payloads are torch tensors; forward
-  and backward use torch autograd. This keeps the lessons transferable to actual
-  `torch.distributed`.
-- **Core stays dependency-free.** The flock runtime is just coroutines + mailboxes
-  and does not import torch. Torch is a *course/puzzle* dependency group; the engine
-  treats a tensor as any other value.
-
-### What flock provides vs. what students build
-
-flock is the *substrate*: only the primitives that need scheduler/engine support
-and can't be built from outside. Everything expressible in terms of them is a
-puzzle, not a library feature.
-
-- **flock provides:** p2p (`send`/`recv`/`isend`/`irecv`), the built-in
-  collectives, the cooperative scheduler, deadlock/usage diagnostics, deterministic
-  seeds, `Group`/`new_group`, `tag` / `ANY_SOURCE` / `ANY_TAG` matching, and the
-  per-rank context (`rank`, `world_size`). Still to add: the trace/cost model.
-- **Students build (the puzzles):** `DeviceMesh` (an n-d reshape of the world over
-  `new_group`), `Placements` (`Shard`/`Replicate`/`Partial`), `DTensor` +
-  `redistribute` (each placement change is a collective), and the parallelisms
-  (DDP, FSDP, TP, CP, EP, PP).
-
-The point is pedagogical: shipping `DeviceMesh` or `redistribute` would hand
-students the punchline. flock stays minimal so the high-level structure is theirs
-to discover.
-
-### Two ideas the whole course is built around
-
-1. **Collectives are p2p algorithms.** Implement `all_reduce` (ring vs recursive
-   halving/doubling), `broadcast` (flat vs tree), etc., from `send`/`recv`, and
-   compare them by message count / rounds / bytes.
-2. **Redistribution is collectives.** Once DTensor exists, every placement change is
-   a collective:
-   - `Shard → Replicate` = `all_gather`
-   - `Replicate → Shard` = local slice (no comm)
-   - `Partial → Replicate` = `all_reduce`
-   - `Shard(i) → Shard(j)` = `all_to_all`
-
-### Tiers
-
-0. **Mental model** — ranks, the scheduler, deadlocks (plain Python values).
-1. **P2P → collectives → algorithms** — semantics, then implement collectives from
-   p2p (ring/tree), with a trace/cost model to compare them.
-2. **Tensors + autograd → DeviceMesh / Placements / DTensor** — `redistribute` as
-   collectives; DeviceMesh is an n-d reshape of the world handing back a `Group`
-   per dim.
-3. **Data parallel** — DDP (all_reduce grads), bucketing + comm/compute overlap,
-   then ZeRO 1/2/3 as the ramp into sharding.
-4. **Model parallelisms** — FSDP, TP, CP, EP, PP, and a 2D/3D composition capstone
-   (TP × DP × PP) — the real DeviceMesh payoff.
-
-### What each tier needs from flock
-
-Most tiers need *nothing new* — they're built on the existing primitives. flock's
-own remaining work is small.
-
-- Tier 1: full collective set (done) + a trace/cost model (messages, rounds, bytes)
-  to compare hand-rolled algorithms.
-- Tier 2: nothing new — `DeviceMesh`/`Placements`/`redistribute` are student work
-  over `new_group` and the collectives.
-- Tier 3–4: nothing new — `tag` / `ANY_SOURCE` `recv` (available) cover ring CP and
-  PP activation passing. PP is p2p of activations (best showcase for visualizing
-  GPipe vs 1F1B bubbles); EP is `all_to_all`.
-
-### Topics not to forget
-
-- Comm/compute overlap & prefetch (DDP buckets, FSDP all-gather prefetch) — built on
-  "post early, await late" + `work.is_completed()`.
-- Gradient accumulation / micro-batching (prereq for PP).
-- Sharded checkpoint save/load (DTensor state dict).
-- Numerics & debugging: all_reduce float ordering, shape/rank-mismatch diagnostics.
+flock is the runtime for [dist-puzzles](../dist-puzzles): a "build distributed
+training from scratch" course with real CPU tensors and autograd. See
+[dist-puzzles/IDEA.md](../dist-puzzles/IDEA.md) for tiers, student-built abstractions
+(`DeviceMesh`, `DTensor`, DDP, FSDP, …), and the course arc.
 
 ### Engine roadmap
 
