@@ -23,7 +23,7 @@ before moving it to heavier infrastructure.
 - Get deadlock messages that tell you which rank is waiting for what.
 - Iterate quickly on distributed algorithms before reaching for real clusters.
 
-## Run An Example
+## Run an example
 
 ```bash
 git clone https://github.com/Tytskiy/flock.git
@@ -40,7 +40,7 @@ The repo includes runnable mini-lessons:
 - [`examples/process_groups.py`](examples/process_groups.py): run a collective
   on a subgroup.
 
-## Quickstart: Pass A Message Around A Ring
+## Quickstart: pass a message around a ring
 
 ```python
 import flock
@@ -62,7 +62,7 @@ print(ring())
 `@flock.distribute(workers=4)` runs the same function as ranks `0`, `1`, `2`,
 and `3`, then returns their results in rank order.
 
-## Collectives Without A Cluster
+## Collectives without a cluster
 
 Collectives are the operations behind a lot of distributed training and
 distributed systems code. With `flock`, you can play with them directly:
@@ -92,7 +92,7 @@ You get the core vocabulary: point-to-point messages, barriers, gather/scatter,
 broadcast, reduce, all-reduce, reduce-scatter, all-to-all, groups, tags, and
 wildcard receives.
 
-## Deadlocks That Talk Back
+## Deadlocks that explain themselves
 
 Distributed bugs are often boring in the worst way: the program just hangs.
 `flock` tries to make those bugs teach you something.
@@ -125,7 +125,7 @@ rank 0 is blocked in recv waiting for rank 1
 Unawaited operations are reported too, so a forgotten `.wait()` does not quietly
 turn into a mystery later.
 
-## Tiny, But Not Toy-Sized
+## Tiny, but not toy-sized
 
 Because ranks are lightweight, you can try examples that would be annoying to
 set up with real infrastructure. This 1,000-rank collective runs in one Python
@@ -169,7 +169,7 @@ cd flock
 uv sync
 ```
 
-## A Few Things To Try
+## A few things to try
 
 - Write a ring, a fan-out, or a pipeline with `send`, `recv`, `isend`, and
   `irecv`.
@@ -180,7 +180,7 @@ uv sync
 - Use `flock.ANY_SOURCE` or tags when message order is part of the puzzle.
 - Switch scheduling policies to shake out ordering bugs.
 
-## For Curious Readers
+## For curious readers
 
 Each rank is an `async def` function. Operations return `Work` handles, and
 `await work.wait()` gives the scheduler a chance to advance messages and
