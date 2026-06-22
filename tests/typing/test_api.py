@@ -32,6 +32,7 @@ async def _collectives() -> None:
     assert_type(await flock.all_to_all([1, 2]).wait(), list[int])
 
     assert_type(flock.all_reduce(1, lambda a, b: a + b), flock.Work[int])
+    assert_type(await flock.new_group([0, 1]), flock.Group)
 
 
 async def _recv_int(src: int) -> int:

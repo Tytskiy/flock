@@ -13,10 +13,9 @@ def test_all_reduce_sum():
 
 
 def test_all_reduce_max_subgroup():
-    group = new_group([0, 2, 3])
-
     @flock.distribute(workers=4)
     async def run():
+        group = await new_group([0, 2, 3])
         if flock.get_rank() in group:
             return await flock.all_reduce(flock.get_rank(), "max", group=group).wait()
         return None

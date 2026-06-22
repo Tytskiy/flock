@@ -15,12 +15,12 @@ def test_scatter_world():
 
 
 def test_scatter_subgroup():
-    group = new_group([0, 2])
     src = 0
 
     @flock.distribute(workers=4)
     async def run():
         rank = flock.get_rank()
+        group = await new_group([0, 2])
         if rank not in group:
             return None
         values = ["x", "y"] if rank == src else None
@@ -75,11 +75,10 @@ def test_scatter_wrong_length_raises():
 
 
 def test_scatter_src_not_in_group_raises():
-    group = new_group([0, 1])
-
     @flock.distribute(workers=3)
     async def run():
         rank = flock.get_rank()
+        group = await new_group([0, 1])
         if rank not in group:
             return None
         await flock.scatter(None, src=2, group=group).wait()

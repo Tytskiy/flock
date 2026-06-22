@@ -11,11 +11,10 @@ def test_reduce_to_dst():
 
 
 def test_reduce_subgroup():
-    group = new_group([0, 2, 3])
-
     @flock.distribute(workers=4)
     async def run():
         rank = flock.get_rank()
+        group = await new_group([0, 2, 3])
         if rank not in group:
             return None
         return await flock.reduce(rank, "sum", dst=3, group=group).wait()

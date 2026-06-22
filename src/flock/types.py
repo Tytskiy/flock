@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import itertools
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass
-
-from flock.errors import FlockUsageError
 
 Rank = int
 
@@ -14,7 +11,6 @@ ANY_SOURCE: Rank = -1
 ANY_TAG: int = -1
 
 _WORLD_ID = 0
-_group_ids = itertools.count(_WORLD_ID + 1)
 
 
 @dataclass(frozen=True, eq=False)
@@ -42,15 +38,11 @@ class Group:
     def __hash__(self) -> int:
         return hash(self.id)
 
+    def __lt__(self, other: Group) -> bool:
+        return self.id < other.id
+
 
 WORLD = Group(ranks=(), id=_WORLD_ID)
-
-
-def new_group(ranks: Sequence[Rank]) -> Group:
-    unique = sorted(set(ranks))
-    if len(unique) != len(ranks):
-        raise FlockUsageError(f"new_group got duplicate ranks: {sorted(ranks)}.")
-    return Group(ranks=tuple(unique), id=next(_group_ids))
 
 
 def _default_world_group(world_size: int) -> Group:

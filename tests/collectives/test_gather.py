@@ -11,11 +11,10 @@ def test_gather_to_dst():
 
 
 def test_gather_subgroup_ordering():
-    group = new_group([2, 0])
-
     @flock.distribute(workers=4)
     async def run():
         rank = flock.get_rank()
+        group = await new_group([2, 0])
         if rank not in group:
             return None
         return await flock.gather(rank * 10, dst=2, group=group).wait()

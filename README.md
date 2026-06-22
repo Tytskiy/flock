@@ -175,7 +175,8 @@ uv sync
   `irecv`.
 - Replace hand-written message passing with `all_gather`, `broadcast`, or
   `all_reduce`.
-- Create a subgroup with `flock.new_group([0, 2])`.
+- Create a subgroup with `await flock.new_group([0, 2])`; every rank calls it,
+  then non-members skip the subgroup collective.
 - Use `flock.ANY_SOURCE` or tags when message order is part of the puzzle.
 - Switch scheduling policies to shake out ordering bugs.
 

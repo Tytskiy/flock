@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import itertools
 import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -175,6 +176,27 @@ class Scatter:
             raise FlockUsageError("only the scatter src rank should provide values.")
 
 
+@dataclass(frozen=True)
+class NewGroup:
+    kind: ClassVar[str] = "new_group"
+    ranks: Sequence[Rank]
+    world_size: int
+
+    def begin(self, rank: Rank) -> NewGroupState:
+        ranks = normalize_group_ranks(self.ranks, self.world_size)
+        return NewGroupState(ranks=ranks, group=Group(ranks=ranks, id=next(_group_ids)))
+
+    def enter(self, state: CollectiveState, rank: Rank, members: Group) -> None:
+        assert isinstance(state, NewGroupState)
+        assert self.world_size == len(members)
+        ranks = normalize_group_ranks(self.ranks, self.world_size)
+        if ranks != state.ranks:
+            raise FlockCollectiveMismatch(
+                f"rank {rank} called new_group with members {list(ranks)}, "
+                f"but other ranks in the group already started it with members {list(state.ranks)}."
+            )
+
+
 @dataclass
 class BarrierState:
     kind: ClassVar[str] = "barrier"
@@ -269,12 +291,24 @@ class ScatterState:
         return copy.deepcopy(self.values[members.index(rank)])
 
 
+@dataclass
+class NewGroupState:
+    kind: ClassVar[str] = "new_group"
+    ranks: tuple[Rank, ...]
+    group: Group
+
+    def complete(self, members: Group, rank: Rank) -> Group:
+        return self.group
+
+
 _REDUCERS: dict[ReduceOp, ReduceFn] = {
     ReduceOp.SUM: operator.add,
     ReduceOp.PROD: operator.mul,
     ReduceOp.MIN: min,
     ReduceOp.MAX: max,
 }
+
+_group_ids = itertools.count(1)
 
 
 def _op_name(op: ReduceOpLike) -> str:
@@ -304,6 +338,18 @@ def _require_one_value_per_member(kind: str, rank: Rank, values: Sequence[Any], 
         raise FlockUsageError(
             f"{kind} expected {len(members)} values (one per member), but rank {rank} provided {len(values)}."
         )
+
+
+def normalize_group_ranks(ranks: Sequence[Rank], world_size: int) -> tuple[Rank, ...]:
+    unique = sorted(set(ranks))
+    if len(unique) != len(ranks):
+        raise FlockUsageError(f"new_group got duplicate ranks: {sorted(ranks)}.")
+    if not unique:
+        raise FlockUsageError("new_group requires at least one rank.")
+    for member in unique:
+        if member < 0 or member >= world_size:
+            raise FlockUsageError(f"group member {member} is out of range for world_size={world_size}.")
+    return tuple(unique)
 
 
 def reduce_value(op: ReduceOpLike, acc: Any | None, curr: Any) -> Any:

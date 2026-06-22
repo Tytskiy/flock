@@ -1,7 +1,7 @@
 import pytest
 
 import flock
-from flock import FlockCollectiveMismatch, FlockUsageError, new_group
+from flock import FlockCollectiveMismatch, FlockDeadlockError, FlockUsageError, new_group
 
 
 def test_all_gather_world():
@@ -18,10 +18,9 @@ def test_all_gather_world():
 
 
 def test_all_gather_subgroup():
-    group = new_group([0, 2])
-
     @flock.distribute(workers=4)
     async def run():
+        group = await new_group([0, 2])
         if flock.get_rank() in group:
             return await flock.all_gather(flock.get_rank(), group=group).wait()
         return None
@@ -54,3 +53,43 @@ def test_all_gather_collective_mismatch():
 def test_all_gather_outside_distribute_raises():
     with pytest.raises(FlockUsageError, match="wrong place"):
         flock.all_gather(0)
+
+
+def test_new_group_requires_runtime():
+    with pytest.raises(FlockUsageError, match="wrong place"):
+        flock.new_group([0, 1]).send(None)
+
+
+def test_new_group_requires_every_rank():
+    @flock.distribute(workers=3)
+    async def run():
+        if flock.get_rank() != 1:
+            await flock.new_group([0, 2])
+        return "done"
+
+    with pytest.raises(FlockDeadlockError, match="new_group"):
+        run()
+
+
+def test_new_group_mismatch_raises():
+    @flock.distribute(workers=2)
+    async def run():
+        ranks = [0] if flock.get_rank() == 0 else [1]
+        await flock.new_group(ranks)
+        return "done"
+
+    with pytest.raises(FlockCollectiveMismatch, match="new_group"):
+        run()
+
+
+def test_new_group_shares_world_collective_sequence():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.new_group([0, 1])
+        else:
+            await flock.barrier().wait()
+        return "done"
+
+    with pytest.raises(FlockCollectiveMismatch, match="new_group"):
+        run()

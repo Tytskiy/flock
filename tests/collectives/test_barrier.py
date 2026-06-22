@@ -14,10 +14,9 @@ def test_barrier_sync():
 
 
 def test_barrier_subgroup():
-    group = new_group([0, 2])
-
     @flock.distribute(workers=4)
     async def run():
+        group = await new_group([0, 2])
         if flock.get_rank() in group:
             await flock.barrier(group=group).wait()
             return "synced"
@@ -54,8 +53,9 @@ def test_barrier_outside_distribute_raises():
 def test_barrier_non_member_raises():
     @flock.distribute(workers=3)
     async def run():
+        group = await new_group([0, 1])
         if flock.get_rank() == 2:
-            return await flock.barrier(group=new_group([0, 1])).wait()
+            return await flock.barrier(group=group).wait()
         await flock.barrier().wait()
         return flock.get_rank()
 

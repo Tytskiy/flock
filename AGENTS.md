@@ -64,6 +64,8 @@ something is done, a non-obvious trade-off, or a subtle constraint.
 - `mypy` for type checking (`src` + `tests/typing`, strict-ish)
 - `pytest` for tests
 - Run `just check && just test` after changes
+- Ask before any interaction with a remote repository, including pushes,
+  releases, metadata edits, or GitHub Actions changes.
 
 ## Design principles
 

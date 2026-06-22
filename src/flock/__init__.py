@@ -15,9 +15,10 @@ from .collectives import (
 from .context import get_rank, get_world_size
 from .decorator import distribute
 from .errors import FlockCollectiveMismatch, FlockDeadlockError, FlockError, FlockUsageError
+from .groups import new_group
 from .p2p import irecv, isend, recv, send
 from .scheduler import Fifo, Random
-from .types import ANY_SOURCE, ANY_TAG, new_group
+from .types import ANY_SOURCE, ANY_TAG
 from .work import Work
 
 __all__ = [
