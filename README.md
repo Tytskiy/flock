@@ -161,6 +161,18 @@ With `uv`:
 uv add git+https://github.com/Tytskiy/flock.git
 ```
 
+Tensor helpers live in `flock.torch` and require PyTorch:
+
+```bash
+pip install "flock[torch] @ git+https://github.com/Tytskiy/flock.git"
+```
+
+With `uv`:
+
+```bash
+uv add "flock[torch] @ git+https://github.com/Tytskiy/flock.git"
+```
+
 For local development:
 
 ```bash

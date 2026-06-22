@@ -28,6 +28,21 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.optional-dependencies]
+torch = [
+    "torch>=2.0",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [build-system]
 requires = ["uv_build>=0.11.12,<0.12.0"]
 build-backend = "uv_build"
@@ -35,8 +50,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
+    "numpy>=2.0",
     "pytest>=9.0.3",
     "ruff>=0.15.16",
+    "torch>=2.0",
 ]
 
 [tool.ruff]
@@ -52,3 +69,7 @@ files = ["src", "tests/typing"]
 check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*"]
+ignore_missing_imports = true
