@@ -5,7 +5,52 @@ from typing import Any
 
 from flock.context import make_context
 from flock.errors import FlockUsageError
+from flock.per_rank import PerRank
 from flock.scheduler import CooperativeScheduler, Policy, Random, Worker
+
+
+def _validate_per_rank(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    workers: int,
+    fn_name: str,
+) -> None:
+    for index, arg in enumerate(args):
+        if isinstance(arg, PerRank) and len(arg.values) != workers:
+            raise FlockUsageError(
+                f"{fn_name} got per_rank(...) with {len(arg.values)} values at argument "
+                f"position {index}, but @flock.distribute(workers={workers}) runs "
+                f"{workers} workers.\n"
+                "Pass one value per worker."
+            )
+
+    for name, value in kwargs.items():
+        if isinstance(value, PerRank) and len(value.values) != workers:
+            raise FlockUsageError(
+                f"{fn_name} got per_rank(...) with {len(value.values)} values for "
+                f"argument {name!r}, but @flock.distribute(workers={workers}) runs "
+                f"{workers} workers.\n"
+                "Pass one value per worker."
+            )
+
+
+def _localize(value: Any, rank: int) -> Any:
+    if isinstance(value, PerRank):
+        return value.values[rank]
+    return value
+
+
+def _localize_call(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    rank: int,
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    return (
+        tuple(_localize(arg, rank) for arg in args),
+        {name: _localize(value, rank) for name, value in kwargs.items()},
+    )
 
 
 def distribute[R](
@@ -52,13 +97,20 @@ def distribute[R](
 
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> list[R]:
-            spawned = [
-                Worker(
-                    coro=fn(*args, **kwargs),
-                    context=make_context(rank, workers),
+            _validate_per_rank(args, kwargs, workers=workers, fn_name=fn.__name__)
+            spawned = []
+            for rank in range(workers):
+                local_args, local_kwargs = _localize_call(
+                    args,
+                    kwargs,
+                    rank=rank,
                 )
-                for rank in range(workers)
-            ]
+                spawned.append(
+                    Worker(
+                        coro=fn(*local_args, **local_kwargs),
+                        context=make_context(rank, workers),
+                    )
+                )
             try:
                 return CooperativeScheduler(spawned, policy=chosen).run()
             except BaseException:

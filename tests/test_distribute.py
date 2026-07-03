@@ -78,3 +78,55 @@ def test_distribute_invalid_worker_count_raises(workers):
 def test_rank_outside_distribute_raises():
     with pytest.raises(FlockUsageError):
         flock.get_rank()
+
+
+def test_per_rank_shards_positional_argument():
+    world = 4
+
+    @flock.distribute(workers=world)
+    async def run(data: int):
+        return data
+
+    assert run(flock.per_rank([10, 20, 30, 40])) == [10, 20, 30, 40]
+
+
+def test_per_rank_mixed_with_broadcast_argument():
+    world = 3
+
+    @flock.distribute(workers=world)
+    async def run(data: int, scale: int):
+        return data * scale
+
+    assert run(flock.per_rank([1, 2, 3]), scale=10) == [10, 20, 30]
+
+
+def test_per_rank_shards_keyword_argument():
+    world = 2
+
+    @flock.distribute(workers=world)
+    async def run(*, data: str):
+        return data
+
+    assert run(data=flock.per_rank(["a", "b"])) == ["a", "b"]
+
+
+def test_per_rank_rejects_wrong_length():
+    world = 4
+
+    @flock.distribute(workers=world)
+    async def run(data: int):
+        return data
+
+    with pytest.raises(FlockUsageError, match="per_rank"):
+        run(flock.per_rank([1, 2, 3]))
+
+
+def test_plain_list_is_broadcast_to_all_ranks():
+    world = 3
+
+    @flock.distribute(workers=world)
+    async def run(data: list[int]):
+        return data
+
+    shared = [1, 2, 3]
+    assert run(shared) == [shared, shared, shared]

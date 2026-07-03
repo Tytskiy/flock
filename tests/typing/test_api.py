@@ -51,3 +51,16 @@ async def _p2p() -> None:
     assert_type(await flock.send(0, "x"), None)
     assert_type(await flock.recv(0, expected_type=str), str)
     assert_type(await _recv_int(0), int)
+
+
+def _distributed_with_per_rank(values: list[int]) -> list[int]:
+    @flock.distribute(workers=2)
+    async def run(data: int) -> int:
+        return data
+
+    return run(flock.per_rank(values))
+
+
+def _per_rank_types() -> None:
+    assert_type(flock.per_rank([1, 2]), flock.PerRank[int])
+    assert_type(_distributed_with_per_rank([1, 2]), list[int])
