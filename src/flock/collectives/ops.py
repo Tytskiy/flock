@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Any, ClassVar, Protocol
 
 from flock.errors import FlockCollectiveMismatch, FlockUsageError
+from flock.payload import payload_bytes
 from flock.types import Group, Rank
 
 
@@ -27,6 +28,10 @@ class CollectiveState(Protocol):
     kind: ClassVar[str]
 
     def complete(self, members: Group, rank: Rank) -> Any: ...
+
+    def payload_bytes(self) -> int: ...
+
+    def rank_payload_bytes(self, rank: Rank) -> int: ...
 
 
 class CollectiveCall(Protocol):
@@ -74,6 +79,7 @@ class AllReduce:
         assert isinstance(state, AllReduceState)
         _require_same_op("all_reduce", rank, self.op, state.op)
         state.value = reduce_value(self.op, state.value, self.value)
+        state.rank_bytes[rank] = payload_bytes(self.value)
 
 
 @dataclass(frozen=True)
@@ -91,6 +97,7 @@ class Reduce:
         _require_root("reduce", "dst", rank, self.dst, state.dst, members)
         _require_same_op("reduce", rank, self.op, state.op)
         state.value = reduce_value(self.op, state.value, self.value)
+        state.rank_bytes[rank] = payload_bytes(self.value)
 
 
 @dataclass(frozen=True)
@@ -107,6 +114,7 @@ class Broadcast:
         _require_root("broadcast", "src", rank, self.src, state.src, members)
         if rank == self.src:
             state.value = self.value
+            state.rank_bytes[rank] = payload_bytes(self.value)
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,7 @@ class ReduceScatter:
         _require_one_value_per_member("reduce_scatter", rank, self.values, members)
         for position, value in enumerate(self.values):
             state.chunks[position] = reduce_value(self.op, state.chunks.get(position), value)
+        state.rank_bytes[rank] = sum(payload_bytes(value) for value in self.values)
 
 
 @dataclass(frozen=True)
@@ -153,6 +162,7 @@ class AllToAll:
         assert isinstance(state, AllToAllState)
         _require_one_value_per_member("all_to_all", rank, self.values, members)
         state.inbox[rank] = list(self.values)
+        state.rank_bytes[rank] = sum(payload_bytes(value) for value in self.values)
 
 
 @dataclass(frozen=True)
@@ -172,6 +182,7 @@ class Scatter:
                 raise FlockUsageError("scatter requires values on the src rank.")
             _require_one_value_per_member("scatter", rank, self.values, members)
             state.values = list(self.values)
+            state.rank_bytes[rank] = sum(payload_bytes(value) for value in self.values)
         elif self.values is not None:
             raise FlockUsageError("only the scatter src rank should provide values.")
 
@@ -204,6 +215,12 @@ class BarrierState:
     def complete(self, members: Group, rank: Rank) -> None:
         return None
 
+    def payload_bytes(self) -> int:
+        return 0
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return 0
+
 
 @dataclass
 class AllGatherState:
@@ -213,15 +230,30 @@ class AllGatherState:
     def complete(self, members: Group, rank: Rank) -> list[Any]:
         return copy.deepcopy([self.values[member] for member in members])
 
+    def payload_bytes(self) -> int:
+        return sum(payload_bytes(value) for value in self.values.values())
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        if rank not in self.values:
+            return 0
+        return payload_bytes(self.values[rank])
+
 
 @dataclass
 class AllReduceState:
     kind: ClassVar[str] = "all_reduce"
     op: ReduceOpLike
     value: Any | None = None
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> Any:
         return copy.deepcopy(self.value)
+
+    def payload_bytes(self) -> int:
+        return payload_bytes(self.value)
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
@@ -230,11 +262,18 @@ class ReduceState:
     op: ReduceOpLike
     dst: Rank
     value: Any | None = None
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> Any:
         if rank != self.dst:
             return None
         return copy.deepcopy(self.value)
+
+    def payload_bytes(self) -> int:
+        return payload_bytes(self.value)
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
@@ -242,9 +281,16 @@ class BroadcastState:
     kind: ClassVar[str] = "broadcast"
     src: Rank
     value: Any = None
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> Any:
         return copy.deepcopy(self.value)
+
+    def payload_bytes(self) -> int:
+        return payload_bytes(self.value)
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
@@ -258,25 +304,47 @@ class GatherState:
             return None
         return copy.deepcopy([self.values[member] for member in members])
 
+    def payload_bytes(self) -> int:
+        return sum(payload_bytes(value) for value in self.values.values())
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        if rank not in self.values:
+            return 0
+        return payload_bytes(self.values[rank])
+
 
 @dataclass
 class ReduceScatterState:
     kind: ClassVar[str] = "reduce_scatter"
     op: ReduceOpLike
     chunks: dict[int, Any] = field(default_factory=dict)
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> Any:
         return copy.deepcopy(self.chunks[members.index(rank)])
+
+    def payload_bytes(self) -> int:
+        return sum(payload_bytes(chunk) for chunk in self.chunks.values())
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
 class AllToAllState:
     kind: ClassVar[str] = "all_to_all"
     inbox: dict[Rank, list[Any]] = field(default_factory=dict)
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> list[Any]:
         column = members.index(rank)
         return copy.deepcopy([self.inbox[sender][column] for sender in members])
+
+    def payload_bytes(self) -> int:
+        return sum(payload_bytes(value) for values in self.inbox.values() for value in values)
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
@@ -284,11 +352,20 @@ class ScatterState:
     kind: ClassVar[str] = "scatter"
     src: Rank
     values: list[Any] | None = None
+    rank_bytes: dict[Rank, int] = field(default_factory=dict)
 
     def complete(self, members: Group, rank: Rank) -> Any:
         if self.values is None:
             raise FlockUsageError("scatter src did not provide values.")
         return copy.deepcopy(self.values[members.index(rank)])
+
+    def payload_bytes(self) -> int:
+        if self.values is None:
+            return 0
+        return sum(payload_bytes(value) for value in self.values)
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return self.rank_bytes.get(rank, 0)
 
 
 @dataclass
@@ -299,6 +376,12 @@ class NewGroupState:
 
     def complete(self, members: Group, rank: Rank) -> Group:
         return self.group
+
+    def payload_bytes(self) -> int:
+        return 0
+
+    def rank_payload_bytes(self, rank: Rank) -> int:
+        return 0
 
 
 _REDUCERS: dict[ReduceOp, ReduceFn] = {

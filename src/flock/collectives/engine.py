@@ -6,6 +6,7 @@ from flock.collectives.ops import CollectiveCall, CollectiveState
 from flock.context import get_rank as get_current_rank
 from flock.errors import FlockCollectiveMismatch, FlockUsageError
 from flock.scheduler.port import SchedulePort
+from flock.tracer import Tracer
 from flock.types import WORLD, Group, Rank, _default_world_group
 
 
@@ -18,9 +19,10 @@ class CollectiveSlot:
 
 
 class CollectiveEngine:
-    def __init__(self, port: SchedulePort, *, world_size: int) -> None:
+    def __init__(self, port: SchedulePort, *, world_size: int, tracer: Tracer | None = None) -> None:
         self._port = port
         self._world_size = world_size
+        self._tracer = tracer
         self.counters: defaultdict[tuple[Rank, Group], int] = defaultdict(int)
         self.slots: dict[tuple[Group, int], CollectiveSlot] = {}
         self.blocked: dict[Rank, CollectiveHandle] = {}
@@ -47,6 +49,14 @@ class CollectiveEngine:
         call.enter(slot.state, rank, members)
         slot.arrived.add(rank)
         self.counters[(rank, members)] += 1
+        if self._tracer is not None:
+            self._tracer.collective_enter(
+                rank,
+                call.kind,
+                index,
+                len(members),
+                nbytes=slot.state.rank_payload_bytes(rank),
+            )
         request_id = self._request_counter
         self._request_counter += 1
         return CollectiveHandle(
@@ -73,6 +83,13 @@ class CollectiveEngine:
         slot.waiting.add(rank)
 
         if slot.waiting == set(slot.members):
+            if self._tracer is not None:
+                self._tracer.collective_sync(
+                    handle.kind,
+                    handle.index,
+                    len(slot.members),
+                    total_payload_bytes=slot.state.payload_bytes(),
+                )
             del self.slots[key]
             for waiting_rank in sorted(slot.waiting):
                 if waiting_rank in self.blocked:

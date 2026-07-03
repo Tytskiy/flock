@@ -8,8 +8,11 @@ except ImportError as exc:
 import flock
 from flock.collectives import WORLD, Group, ReduceOp
 from flock.collectives.ops import ReduceFn
+from flock.payload import register_payload_bytes
 from flock.types import Rank
 from flock.work import Work
+
+register_payload_bytes(torch.Tensor, lambda tensor: tensor.numel() * tensor.element_size())
 
 
 def isend(dst: Rank, tensor: torch.Tensor, tag: int = 0) -> Work[None]:

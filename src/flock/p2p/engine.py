@@ -6,7 +6,9 @@ from flock.context import get_rank as get_current_rank
 from flock.errors import FlockUsageError
 from flock.p2p.handle import P2PHandle
 from flock.p2p.ops import Irecv, Isend, P2PCall, Recv, Send
+from flock.payload import payload_bytes
 from flock.scheduler.port import SchedulePort
+from flock.tracer import Tracer
 from flock.types import ANY_SOURCE, ANY_TAG, Rank, RequestId
 
 
@@ -26,8 +28,9 @@ class P2PRequest:
 
 
 class P2PEngine:
-    def __init__(self, port: SchedulePort) -> None:
+    def __init__(self, port: SchedulePort, *, tracer: Tracer | None = None) -> None:
         self._port = port
+        self._tracer = tracer
         self.mailboxes: defaultdict[Rank, deque[Message]] = defaultdict(deque)
         self.requests: dict[RequestId, P2PRequest] = {}
         self.blocked: dict[Rank, P2PHandle] = {}
@@ -40,10 +43,26 @@ class P2PEngine:
 
         match call:
             case Isend(value=value):
+                if self._tracer is not None:
+                    self._tracer.p2p_begin(
+                        rank,
+                        call.kind,
+                        call.peer,
+                        call.tag,
+                        nbytes=payload_bytes(value),
+                    )
                 self._deliver(rank, call.peer, value, call.tag, ack=False)
                 self.requests[handle.request_id] = P2PRequest(handle=handle, done=True)
 
             case Send(value=value):
+                if self._tracer is not None:
+                    self._tracer.p2p_begin(
+                        rank,
+                        call.kind,
+                        call.peer,
+                        call.tag,
+                        nbytes=payload_bytes(value),
+                    )
                 self.requests[handle.request_id] = P2PRequest(handle=handle)
                 self._deliver(rank, call.peer, value, call.tag, ack=True, send_id=handle.request_id)
 
@@ -119,9 +138,13 @@ class P2PEngine:
     def _deliver(
         self, src: Rank, dst: Rank, value: Any, tag: int, *, ack: bool, send_id: int | None = None
     ) -> None:
+        if self._tracer is not None:
+            self._tracer.p2p_deliver(src, dst, nbytes=payload_bytes(value), tag=tag)
+
         receiver = self._waiting_recv(dst, src, tag)
         if receiver is not None:
-            del self.blocked[dst]
+            if dst in self.blocked:
+                del self.blocked[dst]
             self.requests.pop(receiver.request_id)
             if ack and send_id is not None:
                 self._complete_send(send_id)

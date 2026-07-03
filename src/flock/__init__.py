@@ -17,8 +17,17 @@ from .decorator import distribute
 from .errors import FlockCollectiveMismatch, FlockDeadlockError, FlockError, FlockUsageError
 from .groups import new_group
 from .p2p import irecv, isend, recv, send
+from .payload import payload_bytes, register_payload_bytes
 from .per_rank import PerRank, per_rank
 from .scheduler import Fifo, Random
+from .tracer import (
+    CollectiveEnter,
+    CollectiveSync,
+    P2PBegin,
+    P2PDeliver,
+    TraceEvent,
+    Tracer,
+)
 from .types import ANY_SOURCE, ANY_TAG
 from .work import Work
 
@@ -50,6 +59,14 @@ __all__ = [
     "Fifo",
     "PerRank",
     "per_rank",
+    "Tracer",
+    "TraceEvent",
+    "P2PBegin",
+    "P2PDeliver",
+    "CollectiveEnter",
+    "CollectiveSync",
+    "payload_bytes",
+    "register_payload_bytes",
     "FlockError",
     "FlockDeadlockError",
     "FlockCollectiveMismatch",

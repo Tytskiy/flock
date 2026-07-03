@@ -10,6 +10,7 @@ from flock.p2p.engine import P2PEngine
 from flock.scheduler.port import SchedulePort
 from flock.scheduler.protocol import Fifo, Policy, Random, Worker
 from flock.scheduler.runtime import Runtime, activate
+from flock.tracer import Tracer
 from flock.types import Rank
 
 
@@ -30,6 +31,8 @@ class CooperativeScheduler[R]:
         self,
         workers: Sequence[Worker[R]],
         policy: Policy,
+        *,
+        tracer: Tracer | None = None,
     ) -> None:
         self.workers = list(workers)
         self.world_size = len(self.workers)
@@ -51,8 +54,8 @@ class CooperativeScheduler[R]:
 
         port: SchedulePort = _SchedulePort(self)
         self.runtime = Runtime(
-            p2p=P2PEngine(port),
-            collectives=CollectiveEngine(port, world_size=self.world_size),
+            p2p=P2PEngine(port, tracer=tracer),
+            collectives=CollectiveEngine(port, world_size=self.world_size, tracer=tracer),
         )
         for worker in self.workers:
             worker.context.run(activate, self.runtime)

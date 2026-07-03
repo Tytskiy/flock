@@ -1,12 +1,13 @@
 import functools
 import inspect
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, Literal, overload
 
 from flock.context import make_context
 from flock.errors import FlockUsageError
 from flock.per_rank import PerRank
 from flock.scheduler import CooperativeScheduler, Policy, Random, Worker
+from flock.tracer import Tracer
 
 
 def _validate_per_rank(
@@ -53,11 +54,33 @@ def _localize_call(
     )
 
 
+@overload
 def distribute[R](
     workers: int,
     seed: int | None = 0,
     policy: Policy | None = None,
-) -> Callable[[Callable[..., Coroutine[Any, Any, R]]], Callable[..., list[R]]]:
+    *,
+    trace: Literal[True],
+) -> Callable[[Callable[..., Coroutine[Any, Any, R]]], Callable[..., tuple[list[R], Tracer]]]: ...
+
+
+@overload
+def distribute[R](
+    workers: int,
+    seed: int | None = 0,
+    policy: Policy | None = None,
+    *,
+    trace: Literal[False] = False,
+) -> Callable[[Callable[..., Coroutine[Any, Any, R]]], Callable[..., list[R]]]: ...
+
+
+def distribute[R](
+    workers: int,
+    seed: int | None = 0,
+    policy: Policy | None = None,
+    *,
+    trace: bool = False,
+) -> Callable[[Callable[..., Coroutine[Any, Any, R]]], Callable[..., list[R] | tuple[list[R], Tracer]]]:
     if callable(workers):
         raise FlockUsageError(
             "@flock.distribute needs to know how many workers to run.\n"
@@ -77,7 +100,9 @@ def distribute[R](
 
     chosen = policy if policy is not None else Random(seed=seed)
 
-    def decorator(fn: Callable[..., Coroutine[Any, Any, R]]) -> Callable[..., list[R]]:
+    def decorator(
+        fn: Callable[..., Coroutine[Any, Any, R]],
+    ) -> Callable[..., list[R] | tuple[list[R], Tracer]]:
         if inspect.isasyncgenfunction(fn):
             raise FlockUsageError(
                 f"@flock.distribute can't run {fn.__name__!r} because it has a `yield` "
@@ -96,7 +121,7 @@ def distribute[R](
             )
 
         @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> list[R]:
+        def wrapper(*args: Any, **kwargs: Any) -> list[R] | tuple[list[R], Tracer]:
             _validate_per_rank(args, kwargs, workers=workers, fn_name=fn.__name__)
             spawned = []
             for rank in range(workers):
@@ -111,12 +136,17 @@ def distribute[R](
                         context=make_context(rank, workers),
                     )
                 )
+            tracer = Tracer(world_size=workers) if trace else None
             try:
-                return CooperativeScheduler(spawned, policy=chosen).run()
+                results = CooperativeScheduler(spawned, policy=chosen, tracer=tracer).run()
             except BaseException:
                 for worker in spawned:
                     worker.coro.close()
                 raise
+
+            if tracer is not None:
+                return results, tracer
+            return results
 
         return wrapper
 
