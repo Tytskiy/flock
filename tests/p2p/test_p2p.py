@@ -125,6 +125,25 @@ def test_recv_picks_peer_from_out_of_order_mailbox():
     assert run()[1] == ("from-0", "from-2")
 
 
+def test_irecv_matches_in_post_order_not_wait_order():
+    @flock.distribute(workers=2)
+    async def run():
+        if flock.get_rank() == 0:
+            await flock.barrier().wait()
+            await flock.isend(1, "first").wait()
+            await flock.isend(1, "second").wait()
+            return None
+
+        first = flock.irecv(0)
+        second = flock.irecv(0)
+        await flock.barrier().wait()
+        got_second = await second.wait()
+        got_first = await first.wait()
+        return got_first, got_second
+
+    assert run()[1] == ("first", "second")
+
+
 @pytest.mark.parametrize("peer", [-1, 2])
 def test_p2p_invalid_peer_raises(peer):
     @flock.distribute(workers=2, seed=0)

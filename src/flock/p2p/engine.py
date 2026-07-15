@@ -25,6 +25,7 @@ class Message:
 class P2PRequest:
     handle: P2PHandle
     done: bool = False
+    message: Message | None = None
 
 
 class P2PEngine:
@@ -67,7 +68,11 @@ class P2PEngine:
                 self._deliver(rank, call.peer, value, call.tag, ack=True, send_id=handle.request_id)
 
             case Recv() | Irecv():
-                self.requests[handle.request_id] = P2PRequest(handle=handle)
+                request = P2PRequest(handle=handle)
+                self.requests[handle.request_id] = request
+                message = self._take_message(rank, handle)
+                if message is not None:
+                    self._bind_receive(request, message)
 
             case _:
                 raise TypeError(f"unknown p2p call: {call!r}")
@@ -94,14 +99,13 @@ class P2PEngine:
                     self.blocked[rank] = handle
 
             case "recv" | "irecv":
-                message = self._take_message(rank, handle)
-                if message is None:
+                if not request.done:
                     self.blocked[rank] = handle
                     return
 
                 self.requests.pop(handle.request_id)
-                if message.ack and message.send_id is not None:
-                    self._complete_send(message.send_id)
+                assert request.message is not None
+                message = request.message
                 self._port.resume(rank, message.value)
 
     def deadlock_lines(self) -> list[str]:
@@ -115,12 +119,7 @@ class P2PEngine:
         request = self.requests.get(handle.request_id)
         if request is None:
             return True
-        if handle.kind in ("isend", "send"):
-            return request.done
-        mailbox = self.mailboxes.get(handle.rank)
-        if not mailbox:
-            return False
-        return any(self._matches(handle, message) for message in mailbox)
+        return request.done
 
     def _new_handle(self, kind: str, rank: Rank, peer: Rank, tag: int) -> P2PHandle:
         request_id = self._request_counter
@@ -141,25 +140,43 @@ class P2PEngine:
         if self._tracer is not None:
             self._tracer.p2p_deliver(src, dst, nbytes=payload_bytes(value), tag=tag)
 
-        receiver = self._waiting_recv(dst, src, tag)
+        receiver = self._posted_recv(dst, src, tag)
         if receiver is not None:
-            if dst in self.blocked:
-                del self.blocked[dst]
-            self.requests.pop(receiver.request_id)
-            if ack and send_id is not None:
-                self._complete_send(send_id)
-            self._port.resume(dst, value)
+            self._bind_receive(
+                receiver,
+                Message(src=src, value=value, tag=tag, ack=ack, send_id=send_id),
+            )
             return
 
         self.mailboxes[dst].append(Message(src=src, value=value, tag=tag, ack=ack, send_id=send_id))
 
-    def _waiting_recv(self, dst: Rank, src: Rank, tag: int) -> P2PHandle | None:
-        handle = self.blocked.get(dst)
-        if handle is None or handle.kind not in ("recv", "irecv"):
-            return None
-        if self._matches(handle, Message(src=src, value=None, tag=tag)):
-            return handle
+    def _posted_recv(self, dst: Rank, src: Rank, tag: int) -> P2PRequest | None:
+        incoming = Message(src=src, value=None, tag=tag)
+        # Dict insertion order is receive posting order.
+        for request in self.requests.values():
+            handle = request.handle
+            if (
+                not request.done
+                and handle.rank == dst
+                and handle.kind in ("recv", "irecv")
+                and self._matches(handle, incoming)
+            ):
+                return request
         return None
+
+    def _bind_receive(self, request: P2PRequest, message: Message) -> None:
+        request.done = True
+        request.message = message
+        if message.ack and message.send_id is not None:
+            self._complete_send(message.send_id)
+
+        handle = request.handle
+        blocked = self.blocked.get(handle.rank)
+        if blocked is None or blocked.request_id != handle.request_id:
+            return
+        del self.blocked[handle.rank]
+        self.requests.pop(handle.request_id)
+        self._port.resume(handle.rank, message.value)
 
     def _take_message(self, dst: Rank, handle: P2PHandle) -> Message | None:
         mailbox = self.mailboxes.get(dst)
