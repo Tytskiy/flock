@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from flock.types import Rank
 
@@ -302,16 +300,3 @@ def _format_event(event: TraceEvent) -> str:
 
 def _rule(width: int = 19) -> str:
     return "─" * width
-
-
-def normalize_rank_values(
-    values: Sequence[int] | Any,
-    *,
-    world_size: int,
-    label: str,
-) -> tuple[int, ...]:
-    if hasattr(values, "values"):
-        values = values.values
-    if len(values) != world_size:
-        raise ValueError(f"{label} must have one entry per rank ({world_size}), got {len(values)}")
-    return tuple(int(value) for value in values)

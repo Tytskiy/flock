@@ -27,6 +27,7 @@ from .tracer import (
     P2PDeliver,
     TraceEvent,
     Tracer,
+    TraceSummary,
 )
 from .types import ANY_SOURCE, ANY_TAG
 from .work import Work
@@ -61,6 +62,7 @@ __all__ = [
     "per_rank",
     "Tracer",
     "TraceEvent",
+    "TraceSummary",
     "P2PBegin",
     "P2PDeliver",
     "CollectiveEnter",
